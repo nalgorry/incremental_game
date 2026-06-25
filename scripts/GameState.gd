@@ -114,7 +114,7 @@ func toggle_equip(id: String) -> bool:
 func unlocked_checkpoint_floors() -> Array[int]:
 	# Floor 1 is always available, plus every reached checkpoint.
 	var result: Array[int] = [1]
-	var c := Database.CHECKPOINT_INTERVAL
+	var c := Database.CHECKPOINT_INTERVAL + 1
 	while c <= highest_checkpoint:
 		result.append(c)
 		c += Database.CHECKPOINT_INTERVAL
@@ -123,8 +123,10 @@ func unlocked_checkpoint_floors() -> Array[int]:
 func register_floor_cleared(floor_num: int) -> void:
 	if floor_num > deepest_floor:
 		deepest_floor = floor_num
-	if floor_num % Database.CHECKPOINT_INTERVAL == 0 and floor_num > highest_checkpoint:
-		highest_checkpoint = floor_num
+	if floor_num % Database.CHECKPOINT_INTERVAL == 0:
+		var checkpoint_floor := floor_num + 1
+		if checkpoint_floor <= Database.MAX_FLOORS and checkpoint_floor > highest_checkpoint:
+			highest_checkpoint = checkpoint_floor
 	progress_changed.emit()
 	save_game()
 

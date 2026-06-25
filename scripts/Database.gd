@@ -76,15 +76,15 @@ const ABILITIES := {
 		"color": Color(0.9, 0.3, 0.2),
 	},
 	"poison_cloud": {
-		"name": "Poison Cloud", "order": 2,
-		"type": "dot", "target": "all",
-		"desc": "Poison all enemies over time.",
-		"cooldown": 7.0,
-		"base_power": 6.0, "power_growth": 4.0,
-		"dot_duration": 5.0, "dot_interval": 1.0,
+		"name": "Magic Shield", "order": 2,
+		"type": "shield", "target": "self",
+		"desc": "Gain a shield equal to 50% of starting life.",
+		"cooldown": 40.0,
+		"cooldown_reduction_per_level": 2.0, "cooldown_min": 20.0,
+		"base_power": 0.5, "power_growth": 0.05,
 		"unlock_cost": 20,
 		"upgrade_base": 12, "upgrade_growth": 1.45,
-		"color": Color(0.4, 0.8, 0.2),
+		"color": Color(0.35, 0.65, 1.0),
 	},
 	"frenzy": {
 		"name": "Frenzy", "order": 3,
@@ -113,10 +113,10 @@ const ABILITIES := {
 # GLOBAL BALANCE
 # ---------------------------------------------------------------------------
 const MAX_FLOORS := 100
-const WAVES_PER_FLOOR := 3
+const WAVES_PER_FLOOR := 2
 const CHECKPOINT_INTERVAL := 10
 const MAX_EQUIPPED := 3
-const ENEMIES_PER_WAVE := 3
+const ENEMIES_PER_WAVE := 4
 
 # --- Stat helpers ----------------------------------------------------------
 static func stat_value(id: String, level: int) -> float:
@@ -143,6 +143,12 @@ static func ability_power(id: String, level: int) -> float:
 static func ability_upgrade_cost(id: String, level: int) -> int:
 	var d: Dictionary = ABILITIES[id]
 	return int(ceil(d.upgrade_base * pow(d.upgrade_growth, level - 1)))
+
+static func ability_cooldown(id: String, level: int) -> float:
+	var d: Dictionary = ABILITIES[id]
+	var reduction := float(d.get("cooldown_reduction_per_level", 0.0)) * float(level - 1)
+	var min_cooldown := float(d.get("cooldown_min", 0.1))
+	return maxf(min_cooldown, float(d.cooldown) - reduction)
 
 # --- Enemy / floor scaling -------------------------------------------------
 static func enemy_stats(floor_num: int, is_boss: bool) -> Dictionary:

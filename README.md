@@ -13,13 +13,14 @@ deepest checkpoint you've unlocked.
 
 - **Auto-combat.** The hero auto-attacks and auto-casts up to **3 equipped
   abilities** the moment they come off cooldown.
-- **100 floors**, each with **3 waves** of progressively stronger enemies.
-- **Bosses** appear every 10th floor and unlock a **checkpoint** you can start
-  future runs from.
+- **100 floors**, each with **2 waves** of progressively stronger enemies.
+  The second wave includes a stronger **Blue Boss**.
+- **Bosses** appear every 10th floor and unlock the next-floor **checkpoint**
+  after the fight, e.g. clearing floor 10 unlocks floor 11.
 - **Two currencies:**
   - **Gold** — upgrade hero stats.
   - **Green Emeralds** — unlock and upgrade abilities.
-- **Death or flee** returns you to town with all progress saved.
+- **Death** returns you to town with all progress saved.
 
 ### Hero stats (upgraded with Gold)
 
@@ -38,7 +39,7 @@ deepest checkpoint you've unlocked.
 | --- | --- | --- |
 | Fireball | Damage | Hits the front enemy (free starter) |
 | Meteor | AoE | Damages the whole wave |
-| Poison Cloud | DoT | Damage over time to all enemies |
+| Magic Shield | Shield | Adds a shield based on starting life; upgrades increase shield and reduce cooldown |
 | Frenzy | Buff | Temporary Attack & Attack Speed boost |
 | Mend | Heal | Instantly restores health |
 
