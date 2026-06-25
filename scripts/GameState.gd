@@ -11,8 +11,11 @@ const SAVE_PATH := "user://savegame.json"
 var gold: int = 0
 var emeralds: int = 0
 
-# stat_id -> level (int). Missing key == level 0.
+# Legacy flat stat upgrades from older saves. New purchases use upgrade_node_ranks.
 var stat_levels: Dictionary = {}
+
+# upgrade_node_id -> rank (int). Missing key == rank 0.
+var upgrade_node_ranks: Dictionary = {}
 
 # ability_id -> level (int >= 1). Presence of key == unlocked.
 var ability_levels: Dictionary = {}
@@ -47,7 +50,17 @@ func get_stat_level(id: String) -> int:
 	return int(stat_levels.get(id, 0))
 
 func get_stat_value(id: String) -> float:
-	return Database.stat_value(id, get_stat_level(id))
+	var value := Database.stat_value(id, get_stat_level(id))
+	for node_id in Database.UPGRADE_TREE.keys():
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		var rank := float(get_upgrade_node_rank(node_id))
+		if node.has("bonuses"):
+			var bonuses: Dictionary = node.bonuses
+			if bonuses.has(id):
+				value += float(bonuses[id]) * rank
+		elif node.has("stat") and String(node.stat) == id:
+			value += float(node.bonus_per_rank) * rank
+	return value
 
 func stat_upgrade_cost(id: String) -> int:
 	return Database.stat_cost(id, get_stat_level(id))
@@ -64,6 +77,47 @@ func upgrade_stat(id: String) -> bool:
 	currencies_changed.emit()
 	save_game()
 	return true
+
+func get_upgrade_node_rank(id: String) -> int:
+	return int(upgrade_node_ranks.get(id, 0))
+
+func is_upgrade_node_complete(id: String) -> bool:
+	var node: Dictionary = Database.UPGRADE_TREE[id]
+	return get_upgrade_node_rank(id) >= int(node.max_ranks)
+
+func is_upgrade_node_visible(id: String) -> bool:
+	var node: Dictionary = Database.UPGRADE_TREE[id]
+	for parent_id in node.parents:
+		if not is_upgrade_node_complete(String(parent_id)):
+			return false
+	return true
+
+func upgrade_node_cost(id: String) -> int:
+	return Database.upgrade_node_cost(id, get_upgrade_node_rank(id))
+
+func can_upgrade_node(id: String) -> bool:
+	if not is_upgrade_node_visible(id) or is_upgrade_node_complete(id):
+		return false
+	return gold >= upgrade_node_cost(id)
+
+func upgrade_tree_node(id: String) -> bool:
+	if not can_upgrade_node(id):
+		return false
+	var cost := upgrade_node_cost(id)
+	gold -= cost
+	upgrade_node_ranks[id] = get_upgrade_node_rank(id) + 1
+	currencies_changed.emit()
+	save_game()
+	return true
+
+func double_spell_chance() -> float:
+	var rank := get_upgrade_node_rank("double_spell")
+	if rank <= 0:
+		return 0.0
+	var node: Dictionary = Database.UPGRADE_TREE["double_spell"]
+	var chances: Array = node["chance_by_rank"]
+	var index := clampi(rank, 1, chances.size()) - 1
+	return float(chances[index])
 
 
 # --- Abilities -------------------------------------------------------------
@@ -137,6 +191,7 @@ func to_dict() -> Dictionary:
 		"gold": gold,
 		"emeralds": emeralds,
 		"stat_levels": stat_levels,
+		"upgrade_node_ranks": upgrade_node_ranks,
 		"ability_levels": ability_levels,
 		"equipped": equipped,
 		"highest_checkpoint": highest_checkpoint,
@@ -169,6 +224,7 @@ func load_game() -> void:
 	gold = int(data.get("gold", 0))
 	emeralds = int(data.get("emeralds", 0))
 	stat_levels = data.get("stat_levels", {})
+	upgrade_node_ranks = data.get("upgrade_node_ranks", {})
 	ability_levels = data.get("ability_levels", {})
 	equipped = []
 	for a in data.get("equipped", []):
@@ -182,6 +238,7 @@ func _new_game_defaults() -> void:
 	gold = 0
 	emeralds = 0
 	stat_levels = {}
+	upgrade_node_ranks = {}
 	ability_levels = {}
 	equipped = []
 	highest_checkpoint = 0

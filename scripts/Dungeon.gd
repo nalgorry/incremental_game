@@ -292,7 +292,16 @@ func _cast_abilities(delta: float) -> void:
 		ab.timer += delta
 		if ab.timer >= ab.cooldown:
 			if _try_cast(ab):
+				_try_double_spell(ab)
 				ab.timer = 0.0
+
+
+func _try_double_spell(ab: Dictionary) -> void:
+	var chance := GameState.double_spell_chance()
+	if chance <= 0.0 or randf() >= chance:
+		return
+	if _try_cast(ab):
+		_spawn_text(hero.position + Vector2(0, -70), "Double Spell!", Color(0.65, 0.85, 1.0), true)
 
 
 func _try_cast(ab: Dictionary) -> bool:

@@ -18,11 +18,20 @@ deepest checkpoint you've unlocked.
 - **Bosses** appear every 10th floor and unlock the next-floor **checkpoint**
   after the fight, e.g. clearing floor 10 unlocks floor 11.
 - **Two currencies:**
-  - **Gold** — upgrade hero stats.
+  - **Gold** — buy ranks in the hero upgrade tree.
   - **Green Emeralds** — unlock and upgrade abilities.
 - **Death** returns you to town with all progress saved.
 
-### Hero stats (upgraded with Gold)
+### Hero upgrade tree (upgraded with Gold)
+
+Hero progression uses a limited-rank upgrade tree. The player starts with one
+root node, **All start here**, which gives both +20 HP and +10 Attack. Maxing a
+node reveals its child options, so the upgrade list expands over time instead
+of showing every stat at once. Nodes can improve one or many stats, or unlock
+special effects like **Double Spell**, which gives abilities a chance to cast
+twice.
+
+Tree nodes improve these stats:
 
 | Stat | Effect |
 | --- | --- |
@@ -79,11 +88,13 @@ scripts/
 
 ### Data-driven design
 
-All hero stats and abilities are plain dictionary entries in `Database.gd`.
-Adding a new stat or ability is a **single entry** — the Town UI and the combat
-system both iterate over these catalogs, so no other code needs to change.
+Hero stats, upgrade tree nodes, and abilities are plain dictionary entries in
+`Database.gd`. Adding a new tree node or ability is a **single entry** — the Town
+UI and the combat system both iterate over these catalogs, so no other code
+needs to change.
 
-- `Database.STATS` — stat definitions (base value, growth, gold cost curve).
+- `Database.STATS` — base stat definitions and display formatting.
+- `Database.UPGRADE_TREE` — limited-rank Gold upgrade nodes and unlock parents.
 - `Database.ABILITIES` — ability definitions (type, power, cooldown, emerald costs).
 - `Database.enemy_stats()` — per-floor enemy scaling and rewards.
 
@@ -95,7 +106,8 @@ Key knobs live in `Database.gd`:
 
 - `MAX_FLOORS`, `WAVES_PER_FLOOR`, `CHECKPOINT_INTERVAL`, `ENEMIES_PER_WAVE`,
   `MAX_EQUIPPED`.
-- Per-stat `base` / `growth` and `cost_base` / `cost_growth`.
+- Per-stat `base` values and upgrade tree node `bonuses` / `bonus_per_rank` /
+  special effect fields, `max_ranks`, `cost_base`, `cost_growth`, and `parents`.
 - Per-ability `base_power` / `power_growth`, `cooldown`, `unlock_cost`,
   `upgrade_base` / `upgrade_growth`.
 - Enemy/boss scaling and reward formulas in `enemy_stats()`.
@@ -105,7 +117,7 @@ Key knobs live in `Database.gd`:
 ## MVP scope
 
 **Included:** auto-combat, 100 floors with waves & bosses, checkpoints, two
-currencies, 6 stats, 5 abilities, equip system, save/load, town upgrade screen.
+currencies, hero upgrade tree, 5 abilities, equip system, save/load, town screen.
 
 **Not yet (future work):** loot/equipment, multiple hero classes, prestige
 layers, offline/idle earnings, audio, and polished art (current visuals are

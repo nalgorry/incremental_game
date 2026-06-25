@@ -11,6 +11,7 @@ var _abilities_list: VBoxContainer
 var _equipped_label: Label
 var _checkpoint_option: OptionButton
 var _progress_label: Label
+var _selected_upgrade_node: String = "foundation"
 
 
 func _ready() -> void:
@@ -72,7 +73,7 @@ func _build_ui() -> void:
 	columns.add_theme_constant_override("separation", 16)
 	root.add_child(columns)
 
-	_stats_list = _make_column(columns, "HERO STATS  (Gold)", 0.42)
+	_stats_list = _make_column(columns, "HERO UPGRADE TREE  (Gold)", 0.42)
 	_abilities_list = _make_column(columns, "ABILITIES  (Emeralds)", 0.40)
 	var run_col := _make_column(columns, "START RUN", 0.18)
 	_build_run_column(run_col)
@@ -155,29 +156,298 @@ func _refresh() -> void:
 func _rebuild_stats() -> void:
 	for c in _stats_list.get_children():
 		c.queue_free()
+
+	var summary := Label.new()
+	summary.text = "Current stats: %s" % _current_stats_text()
+	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	summary.add_theme_font_size_override("font_size", 12)
+	summary.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
+	_stats_list.add_child(summary)
+
+	var hint := Label.new()
+	hint.text = "Max a node to reveal its next options."
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.65, 0.9))
+	_stats_list.add_child(hint)
+
+	var graph := Control.new()
+	graph.custom_minimum_size = Vector2(500, 390)
+	graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_stats_list.add_child(graph)
+	_build_upgrade_tree_graph(graph)
+	_build_upgrade_node_details()
+
+
+func _build_upgrade_tree_graph(graph: Control) -> void:
+	var positions := _upgrade_node_positions()
+	var ids := Database.UPGRADE_TREE.keys()
+	ids.sort_custom(func(a, b): return Database.UPGRADE_TREE[a].order < Database.UPGRADE_TREE[b].order)
+
+	# Draw parent links first so circular node buttons sit above them.
+	for id in ids:
+		var node: Dictionary = Database.UPGRADE_TREE[id]
+		for parent_id in node.parents:
+			var parent := String(parent_id)
+			var line := Line2D.new()
+			line.points = PackedVector2Array([positions[parent], positions[id]])
+			line.width = 4.0
+			line.default_color = _node_link_color(parent, id)
+			graph.add_child(line)
+
+	for id in ids:
+		var d: Dictionary = Database.UPGRADE_TREE[id]
+		var visible: bool = GameState.is_upgrade_node_visible(id)
+		var complete: bool = GameState.is_upgrade_node_complete(id)
+		var selected: bool = String(id) == _selected_upgrade_node
+		var btn := Button.new()
+		btn.text = _node_short_label(id) if visible else "?"
+		btn.position = positions[id] - Vector2(30, 30)
+		btn.size = Vector2(60, 60)
+		btn.tooltip_text = d.name
+		btn.add_theme_font_size_override("font_size", 12)
+		btn.add_theme_stylebox_override("normal", _node_style(_node_color(id), selected))
+		btn.add_theme_stylebox_override("hover", _node_style(_node_color(id).lightened(0.15), true))
+		btn.add_theme_stylebox_override("pressed", _node_style(_node_color(id).darkened(0.1), true))
+		btn.add_theme_color_override("font_color", Color(0.95, 0.95, 1.0) if visible else Color(0.45, 0.45, 0.55))
+		btn.pressed.connect(func(): _select_upgrade_node(id))
+		graph.add_child(btn)
+		_add_upgrade_node_icon(graph, id, positions[id], visible)
+
+		var rank_label := Label.new()
+		rank_label.text = "%d/%d" % [GameState.get_upgrade_node_rank(id), int(d.max_ranks)] if visible else "LOCK"
+		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		rank_label.add_theme_font_size_override("font_size", 10)
+		rank_label.add_theme_color_override("font_color", Color(0.6, 0.95, 0.6) if complete else Color(0.75, 0.75, 0.85))
+		rank_label.position = positions[id] + Vector2(-32, 34)
+		rank_label.size = Vector2(64, 16)
+		graph.add_child(rank_label)
+
+
+func _build_upgrade_node_details() -> void:
+	if not Database.UPGRADE_TREE.has(_selected_upgrade_node):
+		_selected_upgrade_node = "foundation"
+	var id := _selected_upgrade_node
+	var d: Dictionary = Database.UPGRADE_TREE[id]
+	var visible := GameState.is_upgrade_node_visible(id)
+	var rank := GameState.get_upgrade_node_rank(id)
+	var max_ranks := int(d.max_ranks)
+
+	var panel := PanelContainer.new()
+	_stats_list.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	margin.add_child(box)
+
+	var title := Label.new()
+	title.text = "%s  Rank %d/%d" % [d.name, rank, max_ranks]
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.9, 0.9, 1.0) if visible else Color(0.55, 0.55, 0.65))
+	box.add_child(title)
+
+	var desc := Label.new()
+	desc.text = d.desc + "  " + _node_bonus_text(id)
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
+	box.add_child(desc)
+
+	var btn := Button.new()
+	if not visible:
+		btn.text = "Locked: max %s first" % _required_parent_names(id)
+		btn.disabled = true
+	elif GameState.is_upgrade_node_complete(id):
+		btn.text = "Complete"
+		btn.disabled = true
+	else:
+		btn.text = "Upgrade  %d g" % GameState.upgrade_node_cost(id)
+		btn.disabled = not GameState.can_upgrade_node(id)
+	btn.pressed.connect(func(): GameState.upgrade_tree_node(id))
+	box.add_child(btn)
+
+
+func _current_stats_text() -> String:
+	var parts: Array[String] = []
 	var ids := Database.STATS.keys()
 	ids.sort_custom(func(a, b): return Database.STATS[a].order < Database.STATS[b].order)
 	for id in ids:
 		var d: Dictionary = Database.STATS[id]
-		var lvl := GameState.get_stat_level(id)
-		var val := GameState.get_stat_value(id)
-		var cost := GameState.stat_upgrade_cost(id)
+		parts.append("%s %s" % [d.name, Database.format_stat(id, GameState.get_stat_value(id))])
+	return " | ".join(parts)
 
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
 
-		var info := Label.new()
-		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		info.text = "%s  Lv.%d  (%s)" % [d.name, lvl, Database.format_stat(id, val)]
-		row.add_child(info)
+func _node_bonus_text(id: String) -> String:
+	var d: Dictionary = Database.UPGRADE_TREE[id]
+	if d.has("chance_by_rank"):
+		var rank := GameState.get_upgrade_node_rank(id)
+		var chances: Array = d["chance_by_rank"]
+		var parts: Array[String] = []
+		for chance in chances:
+			parts.append("%.0f%%" % (float(chance) * 100.0))
+		if rank > 0:
+			var index := clampi(rank, 1, chances.size()) - 1
+			return "(Current: %.0f%% double cast chance; ranks: %s)" % [float(chances[index]) * 100.0, " / ".join(parts)]
+		return "(Ranks: %s double cast chance)" % " / ".join(parts)
+	if d.has("bonuses"):
+		var bonuses: Dictionary = d.bonuses
+		var parts: Array[String] = []
+		var stat_ids := bonuses.keys()
+		stat_ids.sort_custom(func(a, b): return Database.STATS[a].order < Database.STATS[b].order)
+		for stat_id_raw in stat_ids:
+			var stat_id := String(stat_id_raw)
+			var stat: Dictionary = Database.STATS[stat_id]
+			var formatted := Database.format_stat(stat_id, float(bonuses[stat_id]))
+			if stat.percent:
+				parts.append("+%s" % formatted)
+			else:
+				parts.append("+%s %s" % [formatted, stat.name])
+		return "(%s per rank)" % ", ".join(parts)
+	var stat_id := String(d.stat)
+	var stat: Dictionary = Database.STATS[stat_id]
+	var value := float(d.bonus_per_rank)
+	var formatted := Database.format_stat(stat_id, value)
+	if stat.percent:
+		return "(+%s per rank)" % formatted
+	return "(+%s %s per rank)" % [formatted, stat.name]
 
-		var btn := Button.new()
-		btn.text = "+  %d g" % cost
-		btn.disabled = not GameState.can_upgrade_stat(id)
-		btn.pressed.connect(func(): GameState.upgrade_stat(id))
-		row.add_child(btn)
 
-		_stats_list.add_child(row)
+func _select_upgrade_node(id: String) -> void:
+	_selected_upgrade_node = id
+	_refresh()
+
+
+func _upgrade_node_positions() -> Dictionary:
+	return {
+		"foundation": Vector2(250, 315),
+		"blade_training": Vector2(120, 220),
+		"iron_skin": Vector2(250, 205),
+		"quick_casting": Vector2(380, 220),
+		"double_spell": Vector2(420, 115),
+		"vital_reserves": Vector2(170, 105),
+		"precise_strikes": Vector2(75, 105),
+		"crushing_criticals": Vector2(65, 35),
+		"battle_rhythm": Vector2(320, 95),
+	}
+
+
+func _node_short_label(id: String) -> String:
+	match id:
+		"foundation":
+			return ""
+		"blade_training":
+			return "ATK"
+		"iron_skin":
+			return "DEF"
+		"quick_casting":
+			return "SPD"
+		"double_spell":
+			return "2x"
+		"vital_reserves":
+			return "VIT"
+		"precise_strikes":
+			return "CR%"
+		"crushing_criticals":
+			return "CRx"
+		"battle_rhythm":
+			return "RHY"
+	return "?"
+
+
+func _add_upgrade_node_icon(graph: Control, id: String, pos: Vector2, visible: bool) -> void:
+	if id != "foundation":
+		return
+	var color := Color(0.95, 0.95, 1.0) if visible else Color(0.45, 0.45, 0.55)
+
+	var shield := Polygon2D.new()
+	shield.polygon = PackedVector2Array([
+		pos + Vector2(-10, -9),
+		pos + Vector2(10, -9),
+		pos + Vector2(8, 4),
+		pos + Vector2(0, 14),
+		pos + Vector2(-8, 4),
+	])
+	shield.color = Color(color.r, color.g, color.b, 0.22)
+	graph.add_child(shield)
+
+	var shield_outline := Line2D.new()
+	shield_outline.points = PackedVector2Array([
+		pos + Vector2(-10, -9),
+		pos + Vector2(10, -9),
+		pos + Vector2(8, 4),
+		pos + Vector2(0, 14),
+		pos + Vector2(-8, 4),
+		pos + Vector2(-10, -9),
+	])
+	shield_outline.width = 2.0
+	shield_outline.default_color = color
+	graph.add_child(shield_outline)
+
+	var sword := Line2D.new()
+	sword.points = PackedVector2Array([
+		pos + Vector2(-13, 12),
+		pos + Vector2(12, -13),
+	])
+	sword.width = 3.0
+	sword.default_color = color
+	graph.add_child(sword)
+
+	var guard := Line2D.new()
+	guard.points = PackedVector2Array([
+		pos + Vector2(-2, 3),
+		pos + Vector2(6, 11),
+	])
+	guard.width = 2.0
+	guard.default_color = color
+	graph.add_child(guard)
+
+
+func _node_color(id: String) -> Color:
+	if not GameState.is_upgrade_node_visible(id):
+		return Color(0.11, 0.12, 0.18)
+	if GameState.is_upgrade_node_complete(id):
+		return Color(0.15, 0.48, 0.28)
+	if GameState.can_upgrade_node(id):
+		return Color(0.28, 0.42, 0.9)
+	return Color(0.26, 0.27, 0.36)
+
+
+func _node_style(color: Color, highlighted: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.border_color = Color(0.9, 0.9, 1.0) if highlighted else Color(0.45, 0.48, 0.6)
+	style.border_width_left = 3 if highlighted else 2
+	style.border_width_right = 3 if highlighted else 2
+	style.border_width_top = 3 if highlighted else 2
+	style.border_width_bottom = 3 if highlighted else 2
+	style.corner_radius_top_left = 60
+	style.corner_radius_top_right = 60
+	style.corner_radius_bottom_left = 60
+	style.corner_radius_bottom_right = 60
+	return style
+
+
+func _node_link_color(parent_id: String, child_id: String) -> Color:
+	if GameState.is_upgrade_node_visible(child_id):
+		return Color(0.72, 0.75, 0.86, 0.85)
+	if GameState.is_upgrade_node_complete(parent_id):
+		return Color(0.38, 0.45, 0.75, 0.55)
+	return Color(0.17, 0.18, 0.25, 0.65)
+
+
+func _required_parent_names(id: String) -> String:
+	var d: Dictionary = Database.UPGRADE_TREE[id]
+	var names: Array[String] = []
+	for parent_id in d.parents:
+		var parent := String(parent_id)
+		if not GameState.is_upgrade_node_complete(parent):
+			names.append(Database.UPGRADE_TREE[parent].name)
+	return ", ".join(names)
 
 
 func _rebuild_abilities() -> void:
