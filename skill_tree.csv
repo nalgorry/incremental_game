@@ -1,0 +1,20 @@
+tier,skill_id,skill_name,max_ranks,effect,description,cost_base,cost_update_1,cost_update_2,cost_update_3
+0,foundation,All start here,1,"+20 Max HP; +10 Attack","Build the first foundation of every run.",15,40,65,90
+1,blade_training,Blade Training,3,"+4 Attack per rank","Hit harder with every basic attack.",35,60,85,110
+1,iron_skin,Iron Skin,3,"+1.5 Defense per rank","Reduce incoming damage.",30,55,80,105
+1,quick_casting,Quick Casting,2,"+0.08 Basic Attack Speed per rank","Attack faster while abilities cycle.",45,70,95,120
+1,basic_regen,Basic Regen,3,"+1 HP/sec per rank","Add regen HP over time.",100,125,150,175
+1,basic_reserves,Basic Reserves,3,"+30 Max HP per rank","A deeper health pool for long runs.",50,75,100,125
+1,basic_haste,Basic Haste,3,"Reduce ability cooldown 2% per rank","Faster abilities.",150,175,200,225
+1,ability_update,Ability Update,3,"Increase ability power by 2% per rank","More powerful abilities.",200,225,250,275
+2,recover_on_hit,Recover On Hit,3,"2% / 3% / 5% chance to recover 0.5s ability cooldown when hit by an enemy","Faster abilities on hit.",200,225,250,275
+2,advanced_blade_training,Advanced Blade Training,3,"+8 Attack per rank","Sharper technique for deeper floors.",140,175,210,245
+2,reinforced_skin,Reinforced Skin,3,"+3 Defense per rank","Stronger defenses against elite enemies.",130,165,200,235
+2,swift_casting,Swift Casting,2,"+0.14 Basic Attack Speed per rank","Move and cast with greater rhythm.",150,190,230,270
+2,greater_regen,Greater Regen,3,"+2 HP/sec per rank","Recover health faster during long fights.",180,220,260,300
+2,greater_reserves,Greater Reserves,3,"+60 Max HP per rank","Expand your life pool for boss waves.",160,200,240,280
+2,greater_haste,Greater Haste,3,"Reduce ability cooldown 4% per rank","Push abilities closer to constant use.",240,290,340,390
+2,ability_mastery,Ability Mastery,3,"Increase ability power by 4% per rank","Greatly improve ability power.",280,335,390,445
+3,double_spell,Double Spell,3,"10% / 15% / 25% chance to reduce ability cooldown by 50%","Abilities can reduce their next cooldown by 50%.",95,120,145,170
+3,crushing_criticals,Crushing Criticals,3,"+15% Crit Damage per rank","Critical hits deal more damage.",220,245,270,295
+3,battle_rhythm,Battle Rhythm,2,"+0.12 Attack Speed per rank","Blend speed and power.",240,265,290,315

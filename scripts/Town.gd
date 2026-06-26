@@ -165,7 +165,7 @@ func _rebuild_stats() -> void:
 	_stats_list.add_child(summary)
 
 	var hint := Label.new()
-	hint.text = "Max a node to reveal its next options."
+	hint.text = "Upgrade the root to Rank 1 to reveal 3 random Tier 1 skills. First rank in later nodes reveals 1 random skill from the next tier."
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_color", Color(0.55, 0.65, 0.9))
 	_stats_list.add_child(hint)
@@ -185,18 +185,22 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 
 	# Draw parent links first so circular node buttons sit above them.
 	for id in ids:
-		var node: Dictionary = Database.UPGRADE_TREE[id]
-		for parent_id in node.parents:
-			var parent := String(parent_id)
-			var line := Line2D.new()
-			line.points = PackedVector2Array([positions[parent], positions[id]])
-			line.width = 4.0
-			line.default_color = _node_link_color(parent, id)
-			graph.add_child(line)
+		if not GameState.is_upgrade_node_visible(id):
+			continue
+		var parent := GameState.get_upgrade_reveal_parent(id)
+		if parent == "" or not positions.has(parent) or not positions.has(id):
+			continue
+		var line := Line2D.new()
+		line.points = PackedVector2Array([positions[parent], positions[id]])
+		line.width = 4.0
+		line.default_color = _node_link_color(parent, id)
+		graph.add_child(line)
 
 	for id in ids:
 		var d: Dictionary = Database.UPGRADE_TREE[id]
 		var visible: bool = GameState.is_upgrade_node_visible(id)
+		if not visible:
+			continue
 		var complete: bool = GameState.is_upgrade_node_complete(id)
 		var selected: bool = String(id) == _selected_upgrade_node
 		var btn := Button.new()
@@ -224,7 +228,7 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 
 
 func _build_upgrade_node_details() -> void:
-	if not Database.UPGRADE_TREE.has(_selected_upgrade_node):
+	if not Database.UPGRADE_TREE.has(_selected_upgrade_node) or not GameState.is_upgrade_node_visible(_selected_upgrade_node):
 		_selected_upgrade_node = "foundation"
 	var id := _selected_upgrade_node
 	var d: Dictionary = Database.UPGRADE_TREE[id]
@@ -247,7 +251,7 @@ func _build_upgrade_node_details() -> void:
 	margin.add_child(box)
 
 	var title := Label.new()
-	title.text = "%s  Rank %d/%d" % [d.name, rank, max_ranks]
+	title.text = "%s  Rank %d/%d  Tier %d" % [d.name, rank, max_ranks, int(d.tier)]
 	title.add_theme_font_size_override("font_size", 16)
 	title.add_theme_color_override("font_color", Color(0.9, 0.9, 1.0) if visible else Color(0.55, 0.55, 0.65))
 	box.add_child(title)
@@ -260,7 +264,7 @@ func _build_upgrade_node_details() -> void:
 
 	var btn := Button.new()
 	if not visible:
-		btn.text = "Locked: max %s first" % _required_parent_names(id)
+		btn.text = "Locked: complete Tier %d first" % (int(d.tier) - 1)
 		btn.disabled = true
 	elif GameState.is_upgrade_node_complete(id):
 		btn.text = "Complete"
@@ -290,10 +294,20 @@ func _node_bonus_text(id: String) -> String:
 		var parts: Array[String] = []
 		for chance in chances:
 			parts.append("%.0f%%" % (float(chance) * 100.0))
+		if d.has("cooldown_recover_on_hit"):
+			var recover := float(d.cooldown_recover_on_hit)
+			if rank > 0:
+				var index := clampi(rank, 1, chances.size()) - 1
+				return "(Current: %.0f%% chance to recover %.1fs cooldown when hit; ranks: %s)" % [float(chances[index]) * 100.0, recover, " / ".join(parts)]
+			return "(Ranks: %s chance to recover %.1fs cooldown when hit)" % [" / ".join(parts), recover]
 		if rank > 0:
 			var index := clampi(rank, 1, chances.size()) - 1
-			return "(Current: %.0f%% double cast chance; ranks: %s)" % [float(chances[index]) * 100.0, " / ".join(parts)]
-		return "(Ranks: %s double cast chance)" % " / ".join(parts)
+			return "(Current: %.0f%% chance to reduce cooldown by 50%%; ranks: %s)" % [float(chances[index]) * 100.0, " / ".join(parts)]
+		return "(Ranks: %s chance to reduce cooldown by 50%%)" % " / ".join(parts)
+	if d.has("cooldown_reduction_per_rank"):
+		return "(-%.0f%% ability cooldown per rank)" % (float(d.cooldown_reduction_per_rank) * 100.0)
+	if d.has("ability_power_per_rank"):
+		return "(+%.0f%% ability power per rank)" % (float(d.ability_power_per_rank) * 100.0)
 	if d.has("bonuses"):
 		var bonuses: Dictionary = d.bonuses
 		var parts: Array[String] = []
@@ -323,17 +337,50 @@ func _select_upgrade_node(id: String) -> void:
 
 
 func _upgrade_node_positions() -> Dictionary:
-	return {
-		"foundation": Vector2(250, 315),
-		"blade_training": Vector2(120, 220),
-		"iron_skin": Vector2(250, 205),
-		"quick_casting": Vector2(380, 220),
-		"double_spell": Vector2(420, 115),
-		"vital_reserves": Vector2(170, 105),
-		"precise_strikes": Vector2(75, 105),
-		"crushing_criticals": Vector2(65, 35),
-		"battle_rhythm": Vector2(320, 95),
-	}
+	var result := {}
+	for tier in [0, 1, 2, 3]:
+		var ids := _visible_upgrade_ids_in_tier(tier)
+		var count := ids.size()
+		if count == 0:
+			continue
+		var y := _upgrade_tier_y(tier)
+		if tier <= 1:
+			var spacing := 0.0 if count == 1 else minf(140.0, 360.0 / float(count - 1))
+			var start_x := 250.0 - spacing * float(count - 1) * 0.5
+			for i in count:
+				result[ids[i]] = Vector2(start_x + spacing * float(i), y)
+		else:
+			for id in ids:
+				var parent := GameState.get_upgrade_reveal_parent(id)
+				if parent != "" and result.has(parent):
+					result[id] = Vector2(result[parent].x, y)
+				else:
+					result[id] = Vector2(250.0, y)
+	return result
+
+
+func _visible_upgrade_ids_in_tier(tier: int) -> Array[String]:
+	var result: Array[String] = []
+	var ids := Database.UPGRADE_TREE.keys()
+	ids.sort_custom(func(a, b): return Database.UPGRADE_TREE[a].order < Database.UPGRADE_TREE[b].order)
+	for id_raw in ids:
+		var id := String(id_raw)
+		if int(Database.UPGRADE_TREE[id].tier) == tier and GameState.is_upgrade_node_visible(id):
+			result.append(id)
+	return result
+
+
+func _upgrade_tier_y(tier: int) -> float:
+	match tier:
+		0:
+			return 315.0
+		1:
+			return 220.0
+		2:
+			return 125.0
+		3:
+			return 35.0
+	return 315.0
 
 
 func _node_short_label(id: String) -> String:
@@ -346,12 +393,32 @@ func _node_short_label(id: String) -> String:
 			return "DEF"
 		"quick_casting":
 			return "SPD"
+		"basic_regen":
+			return "REG"
+		"basic_reserves":
+			return "HP"
+		"basic_haste":
+			return "CD"
+		"ability_update":
+			return "POW"
+		"advanced_blade_training":
+			return "ATK+"
+		"reinforced_skin":
+			return "DEF+"
+		"swift_casting":
+			return "SPD+"
+		"greater_regen":
+			return "REG+"
+		"greater_reserves":
+			return "HP+"
+		"greater_haste":
+			return "CD+"
+		"ability_mastery":
+			return "POW+"
+		"recover_on_hit":
+			return "HIT"
 		"double_spell":
-			return "2x"
-		"vital_reserves":
-			return "VIT"
-		"precise_strikes":
-			return "CR%"
+			return "CD%"
 		"crushing_criticals":
 			return "CRx"
 		"battle_rhythm":

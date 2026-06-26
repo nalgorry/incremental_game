@@ -115,11 +115,12 @@ func _build_abilities() -> void:
 			continue
 		var d: Dictionary = Database.ABILITIES[id]
 		var starts_ready: bool = String(d.type) != "shield"
+		var cooldown := Database.ability_cooldown(id, GameState.get_ability_level(id)) * GameState.ability_cooldown_multiplier()
 		_abilities.append({
 			"id": id,
 			"level": GameState.get_ability_level(id),
-			"cooldown": Database.ability_cooldown(id, GameState.get_ability_level(id)),
-			"timer": Database.ability_cooldown(id, GameState.get_ability_level(id)) if starts_ready else 0.0,
+			"cooldown": cooldown,
+			"timer": cooldown if starts_ready else 0.0,
 		})
 
 
@@ -219,6 +220,7 @@ func _process(delta: float) -> void:
 		return
 
 	_update_buff(delta)
+	_update_hp_regen(delta)
 	_hero_attack(delta)
 	_cast_abilities(delta)
 	_tick_enemy_dots(delta)
@@ -292,22 +294,22 @@ func _cast_abilities(delta: float) -> void:
 		ab.timer += delta
 		if ab.timer >= ab.cooldown:
 			if _try_cast(ab):
-				_try_double_spell(ab)
 				ab.timer = 0.0
+				_try_cooldown_reduction(ab)
 
 
-func _try_double_spell(ab: Dictionary) -> void:
+func _try_cooldown_reduction(ab: Dictionary) -> void:
 	var chance := GameState.double_spell_chance()
 	if chance <= 0.0 or randf() >= chance:
 		return
-	if _try_cast(ab):
-		_spawn_text(hero.position + Vector2(0, -70), "Double Spell!", Color(0.65, 0.85, 1.0), true)
+	ab.timer = ab.cooldown * 0.5
+	_spawn_text(hero.position + Vector2(0, -70), "CoolDown Reduced", Color(0.65, 0.85, 1.0), true)
 
 
 func _try_cast(ab: Dictionary) -> bool:
 	var id: String = ab.id
 	var d: Dictionary = Database.ABILITIES[id]
-	var power := Database.ability_power(id, ab.level)
+	var power := Database.ability_power(id, ab.level) * GameState.ability_power_multiplier()
 	match d.type:
 		"damage":
 			if enemies.is_empty():
@@ -355,6 +357,14 @@ func _try_cast(ab: Dictionary) -> bool:
 func _update_buff(delta: float) -> void:
 	if hero_buff_timer > 0.0:
 		hero_buff_timer -= delta
+
+
+func _update_hp_regen(delta: float) -> void:
+	if hero == null or not hero.alive:
+		return
+	var regen := GameState.get_stat_value("hp_regen")
+	if regen > 0.0 and hero.hp < hero.max_hp:
+		hero.heal(regen * delta)
 
 
 func _tick_enemy_dots(delta: float) -> void:
@@ -664,16 +674,35 @@ func _fire_projectile(
 
 
 func _apply_projectile_damage(target: CombatEntity, damage: float) -> float:
-	if target != hero or hero_shield <= 0.0:
+	if target != hero:
 		target.take_damage(damage)
 		return damage
+
+	if hero_shield <= 0.0:
+		target.take_damage(damage)
+		_try_recover_on_hit(damage)
+		return damage
+
 	var absorbed := minf(hero_shield, damage)
 	hero_shield -= absorbed
 	var remaining := damage - absorbed
 	_spawn_text(hero.position + Vector2(0, -18), "-%d shield" % int(round(absorbed)), Color(0.35, 0.65, 1.0), false)
 	if remaining > 0.0:
 		target.take_damage(remaining)
+		_try_recover_on_hit(remaining)
 	return remaining
+
+
+func _try_recover_on_hit(hp_damage: float) -> void:
+	if hp_damage <= 0.0:
+		return
+	var chance := GameState.recover_on_hit_chance()
+	if chance <= 0.0 or randf() >= chance:
+		return
+	var recover := GameState.recover_on_hit_seconds()
+	for ab in _abilities:
+		ab.timer = minf(float(ab.cooldown), float(ab.timer) + recover)
+	_spawn_text(hero.position + Vector2(0, -90), "-%.1fs cooldown" % recover, Color(0.55, 0.85, 1.0), false)
 
 
 func _circle(radius: float) -> PackedVector2Array:

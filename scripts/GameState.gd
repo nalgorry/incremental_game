@@ -17,6 +17,12 @@ var stat_levels: Dictionary = {}
 # upgrade_node_id -> rank (int). Missing key == rank 0.
 var upgrade_node_ranks: Dictionary = {}
 
+# Nodes that have appeared in the randomized upgrade tree.
+var visible_upgrade_nodes: Array[String] = []
+
+# node_id -> node_id that revealed it. Used for drawing the randomized tree.
+var visible_upgrade_parents: Dictionary = {}
+
 # ability_id -> level (int >= 1). Presence of key == unlocked.
 var ability_levels: Dictionary = {}
 
@@ -86,11 +92,18 @@ func is_upgrade_node_complete(id: String) -> bool:
 	return get_upgrade_node_rank(id) >= int(node.max_ranks)
 
 func is_upgrade_node_visible(id: String) -> bool:
-	var node: Dictionary = Database.UPGRADE_TREE[id]
-	for parent_id in node.parents:
-		if not is_upgrade_node_complete(String(parent_id)):
+	return id == "foundation" or visible_upgrade_nodes.has(id) or get_upgrade_node_rank(id) > 0
+
+func is_upgrade_tier_complete(tier: int) -> bool:
+	var has_nodes := false
+	for node_id in Database.UPGRADE_TREE.keys():
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		if int(node.tier) != tier:
+			continue
+		has_nodes = true
+		if not is_upgrade_node_complete(String(node_id)):
 			return false
-	return true
+	return has_nodes
 
 func upgrade_node_cost(id: String) -> int:
 	return Database.upgrade_node_cost(id, get_upgrade_node_rank(id))
@@ -103,12 +116,50 @@ func can_upgrade_node(id: String) -> bool:
 func upgrade_tree_node(id: String) -> bool:
 	if not can_upgrade_node(id):
 		return false
+	var old_rank := get_upgrade_node_rank(id)
 	var cost := upgrade_node_cost(id)
 	gold -= cost
-	upgrade_node_ranks[id] = get_upgrade_node_rank(id) + 1
+	upgrade_node_ranks[id] = old_rank + 1
+	if old_rank == 0:
+		_reveal_next_upgrade_nodes(id)
 	currencies_changed.emit()
 	save_game()
 	return true
+
+func _reveal_next_upgrade_nodes(source_id: String) -> void:
+	var source: Dictionary = Database.UPGRADE_TREE[source_id]
+	var next_tier := int(source.tier) + 1
+	var reveal_count := 3 if next_tier == 1 else 1
+	var candidates: Array[String] = []
+	for node_id_raw in Database.UPGRADE_TREE.keys():
+		var node_id := String(node_id_raw)
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		if int(node.tier) == next_tier and not is_upgrade_node_visible(node_id):
+			candidates.append(node_id)
+	candidates.shuffle()
+	for i in mini(reveal_count, candidates.size()):
+		var revealed_id := candidates[i]
+		visible_upgrade_nodes.append(revealed_id)
+		visible_upgrade_parents[revealed_id] = source_id
+
+func get_upgrade_reveal_parent(id: String) -> String:
+	if visible_upgrade_parents.has(id):
+		return String(visible_upgrade_parents[id])
+	if id == "foundation":
+		return ""
+	return _fallback_upgrade_parent(id)
+
+func _fallback_upgrade_parent(id: String) -> String:
+	var node: Dictionary = Database.UPGRADE_TREE[id]
+	if int(node.tier) == 1:
+		return "foundation"
+	for parent_id in node.parents:
+		var parent := String(parent_id)
+		if is_upgrade_node_visible(parent) or get_upgrade_node_rank(parent) > 0:
+			return parent
+	if not node.parents.is_empty():
+		return String(node.parents[0])
+	return ""
 
 func double_spell_chance() -> float:
 	var rank := get_upgrade_node_rank("double_spell")
@@ -118,6 +169,35 @@ func double_spell_chance() -> float:
 	var chances: Array = node["chance_by_rank"]
 	var index := clampi(rank, 1, chances.size()) - 1
 	return float(chances[index])
+
+func ability_cooldown_multiplier() -> float:
+	var reduction := 0.0
+	for node_id in Database.UPGRADE_TREE.keys():
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		if node.has("cooldown_reduction_per_rank"):
+			reduction += float(node.cooldown_reduction_per_rank) * float(get_upgrade_node_rank(String(node_id)))
+	return maxf(0.1, 1.0 - reduction)
+
+func ability_power_multiplier() -> float:
+	var bonus := 0.0
+	for node_id in Database.UPGRADE_TREE.keys():
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		if node.has("ability_power_per_rank"):
+			bonus += float(node.ability_power_per_rank) * float(get_upgrade_node_rank(String(node_id)))
+	return 1.0 + bonus
+
+func recover_on_hit_chance() -> float:
+	var rank := get_upgrade_node_rank("recover_on_hit")
+	if rank <= 0:
+		return 0.0
+	var node: Dictionary = Database.UPGRADE_TREE["recover_on_hit"]
+	var chances: Array = node["chance_by_rank"]
+	var index := clampi(rank, 1, chances.size()) - 1
+	return float(chances[index])
+
+func recover_on_hit_seconds() -> float:
+	var node: Dictionary = Database.UPGRADE_TREE["recover_on_hit"]
+	return float(node.cooldown_recover_on_hit)
 
 
 # --- Abilities -------------------------------------------------------------
@@ -192,6 +272,8 @@ func to_dict() -> Dictionary:
 		"emeralds": emeralds,
 		"stat_levels": stat_levels,
 		"upgrade_node_ranks": upgrade_node_ranks,
+		"visible_upgrade_nodes": visible_upgrade_nodes,
+		"visible_upgrade_parents": visible_upgrade_parents,
 		"ability_levels": ability_levels,
 		"equipped": equipped,
 		"highest_checkpoint": highest_checkpoint,
@@ -225,6 +307,10 @@ func load_game() -> void:
 	emeralds = int(data.get("emeralds", 0))
 	stat_levels = data.get("stat_levels", {})
 	upgrade_node_ranks = data.get("upgrade_node_ranks", {})
+	visible_upgrade_nodes = []
+	for node_id in data.get("visible_upgrade_nodes", []):
+		visible_upgrade_nodes.append(String(node_id))
+	visible_upgrade_parents = data.get("visible_upgrade_parents", {})
 	ability_levels = data.get("ability_levels", {})
 	equipped = []
 	for a in data.get("equipped", []):
@@ -233,18 +319,22 @@ func load_game() -> void:
 	deepest_floor = int(data.get("deepest_floor", 0))
 	selected_start_floor = int(data.get("selected_start_floor", 1))
 	_ensure_starter_ability()
+	_ensure_upgrade_tree_visibility()
 
 func _new_game_defaults() -> void:
 	gold = 0
 	emeralds = 0
 	stat_levels = {}
 	upgrade_node_ranks = {}
+	visible_upgrade_nodes = []
+	visible_upgrade_parents = {}
 	ability_levels = {}
 	equipped = []
 	highest_checkpoint = 0
 	deepest_floor = 0
 	selected_start_floor = 1
 	_ensure_starter_ability()
+	_ensure_upgrade_tree_visibility()
 	save_game()
 
 func _ensure_starter_ability() -> void:
@@ -253,6 +343,30 @@ func _ensure_starter_ability() -> void:
 		ability_levels["fireball"] = 1
 	if equipped.is_empty():
 		equipped.append("fireball")
+
+func _ensure_upgrade_tree_visibility() -> void:
+	if not visible_upgrade_nodes.has("foundation"):
+		visible_upgrade_nodes.append("foundation")
+	for node_id_raw in upgrade_node_ranks.keys():
+		var node_id := String(node_id_raw)
+		if get_upgrade_node_rank(node_id) > 0 and not visible_upgrade_nodes.has(node_id):
+			visible_upgrade_nodes.append(node_id)
+	for node_id in visible_upgrade_nodes:
+		if node_id != "foundation" and not visible_upgrade_parents.has(node_id):
+			visible_upgrade_parents[node_id] = _fallback_upgrade_parent(node_id)
+	# Saves from older tree rules may have learned nodes but no revealed choices.
+	for node_id_raw in Database.UPGRADE_TREE.keys():
+		var node_id := String(node_id_raw)
+		if get_upgrade_node_rank(node_id) > 0 and _visible_nodes_in_tier(int(Database.UPGRADE_TREE[node_id].tier) + 1).is_empty():
+			_reveal_next_upgrade_nodes(node_id)
+
+func _visible_nodes_in_tier(tier: int) -> Array[String]:
+	var result: Array[String] = []
+	for node_id_raw in Database.UPGRADE_TREE.keys():
+		var node_id := String(node_id_raw)
+		if int(Database.UPGRADE_TREE[node_id].tier) == tier and is_upgrade_node_visible(node_id):
+			result.append(node_id)
+	return result
 
 func reset_progress() -> void:
 	_new_game_defaults()

@@ -25,11 +25,14 @@ deepest checkpoint you've unlocked.
 ### Hero upgrade tree (upgraded with Gold)
 
 Hero progression uses a limited-rank upgrade tree. The player starts with one
-root node, **All start here**, which gives both +20 HP and +10 Attack. Maxing a
-node reveals its child options, so the upgrade list expands over time instead
-of showing every stat at once. Nodes can improve one or many stats, or unlock
-special effects like **Double Spell**, which gives abilities a chance to cast
-twice.
+root node, **All start here**, which gives both +20 HP and +10 Attack. Completing
+the root's first rank reveals three random Tier 1 skills. After that, buying the
+first rank of any visible skill reveals one random skill from the next tier, up
+to Tier 3. Nodes can
+improve one or many stats, strengthen abilities, reduce cooldowns, or unlock
+special effects like **Double Spell**, which gives abilities a chance to reduce
+their next cooldown by 50%.
+Tier 2 contains stronger versions of the Tier 1 upgrades.
 
 Tree nodes improve these stats:
 
@@ -39,6 +42,7 @@ Tree nodes improve these stats:
 | Attack | Base damage per hit |
 | Attack Speed | Attacks per second |
 | Defense | Reduces incoming damage |
+| HP Regen | Health recovered per second |
 | Crit Chance | Chance to deal a critical hit |
 | Crit Damage | Critical hit damage multiplier |
 
@@ -94,7 +98,7 @@ UI and the combat system both iterate over these catalogs, so no other code
 needs to change.
 
 - `Database.STATS` — base stat definitions and display formatting.
-- `Database.UPGRADE_TREE` — limited-rank Gold upgrade nodes and unlock parents.
+- `Database.UPGRADE_TREE` — limited-rank Gold upgrade nodes, tiers, and visual links.
 - `Database.ABILITIES` — ability definitions (type, power, cooldown, emerald costs).
 - `Database.enemy_stats()` — per-floor enemy scaling and rewards.
 
@@ -106,8 +110,9 @@ Key knobs live in `Database.gd`:
 
 - `MAX_FLOORS`, `WAVES_PER_FLOOR`, `CHECKPOINT_INTERVAL`, `ENEMIES_PER_WAVE`,
   `MAX_EQUIPPED`.
-- Per-stat `base` values and upgrade tree node `bonuses` / `bonus_per_rank` /
-  special effect fields, `max_ranks`, `cost_base`, `cost_growth`, and `parents`.
+- Per-stat `base` values and upgrade tree node `tier`, `bonuses` /
+  `bonus_per_rank` / special effect fields, `max_ranks`, `cost_base`,
+  `cost_growth`, and visual `parents`.
 - Per-ability `base_power` / `power_growth`, `cooldown`, `unlock_cost`,
   `upgrade_base` / `upgrade_growth`.
 - Enemy/boss scaling and reward formulas in `enemy_stats()`.
