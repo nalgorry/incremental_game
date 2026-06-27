@@ -165,7 +165,7 @@ func _rebuild_stats() -> void:
 	_stats_list.add_child(summary)
 
 	var hint := Label.new()
-	hint.text = "Upgrade the root to reveal one random Tier 1 skill per category. Later nodes reveal one skill from the same category in the next tier."
+	hint.text = "Upgrade the root to reveal one starter per category. Each starter reveals two random paths; buying one path locks the other."
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_color", Color(0.55, 0.65, 0.9))
 	_stats_list.add_child(hint)
@@ -177,7 +177,7 @@ func _rebuild_stats() -> void:
 	_stats_list.add_child(reset_btn)
 
 	var graph := Control.new()
-	graph.custom_minimum_size = Vector2(500, 390)
+	graph.custom_minimum_size = Vector2(760, 540)
 	graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_stats_list.add_child(graph)
 	_build_upgrade_tree_graph(graph)
@@ -201,6 +201,13 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		line.width = 4.0
 		line.default_color = _node_link_color(parent, id)
 		graph.add_child(line)
+		var extra_parent := GameState.get_upgrade_extra_reveal_parent(id)
+		if extra_parent != "" and positions.has(extra_parent):
+			var extra_line := Line2D.new()
+			extra_line.points = PackedVector2Array([positions[extra_parent], positions[id]])
+			extra_line.width = 4.0
+			extra_line.default_color = _node_link_color(extra_parent, id)
+			graph.add_child(extra_line)
 
 	for id in ids:
 		var d: Dictionary = Database.UPGRADE_TREE[id]
@@ -209,6 +216,7 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 			continue
 		var complete: bool = GameState.is_upgrade_node_complete(id)
 		var selected: bool = String(id) == _selected_upgrade_node
+		var path_locked := GameState.is_upgrade_node_path_locked(id)
 		var btn := Button.new()
 		btn.text = _node_short_label(id) if visible else "?"
 		btn.position = positions[id] - Vector2(30, 30)
@@ -218,16 +226,16 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		btn.add_theme_stylebox_override("normal", _node_style(_node_color(id), selected))
 		btn.add_theme_stylebox_override("hover", _node_style(_node_color(id).lightened(0.15), true))
 		btn.add_theme_stylebox_override("pressed", _node_style(_node_color(id).darkened(0.1), true))
-		btn.add_theme_color_override("font_color", Color(0.95, 0.95, 1.0) if visible else Color(0.45, 0.45, 0.55))
+		btn.add_theme_color_override("font_color", Color(0.45, 0.45, 0.55) if path_locked else Color(0.95, 0.95, 1.0))
 		btn.pressed.connect(func(): _select_upgrade_node(id))
 		graph.add_child(btn)
 		_add_upgrade_node_icon(graph, id, positions[id], visible)
 
 		var rank_label := Label.new()
-		rank_label.text = "%d/%d" % [GameState.get_upgrade_node_rank(id), int(d.max_ranks)] if visible else "LOCK"
+		rank_label.text = "LOCK" if path_locked else ("%d/%d" % [GameState.get_upgrade_node_rank(id), int(d.max_ranks)] if visible else "LOCK")
 		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		rank_label.add_theme_font_size_override("font_size", 10)
-		rank_label.add_theme_color_override("font_color", Color(0.6, 0.95, 0.6) if complete else Color(0.75, 0.75, 0.85))
+		rank_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.65) if path_locked else (Color(0.6, 0.95, 0.6) if complete else Color(0.75, 0.75, 0.85)))
 		rank_label.position = positions[id] + Vector2(-32, 34)
 		rank_label.size = Vector2(64, 16)
 		graph.add_child(rank_label)
@@ -272,6 +280,12 @@ func _build_upgrade_node_details() -> void:
 	if not visible:
 		btn.text = "Locked: complete Tier %d first" % (int(d.tier) - 1)
 		btn.disabled = true
+	elif GameState.is_upgrade_node_path_locked(id):
+		btn.text = "Path locked"
+		btn.disabled = true
+	elif GameState.is_upgrade_node_common_locked(id):
+		btn.text = "Locked: complete your chosen path first"
+		btn.disabled = true
 	elif GameState.is_upgrade_node_complete(id):
 		btn.text = "Complete"
 		btn.disabled = true
@@ -294,6 +308,8 @@ func _current_stats_text() -> String:
 
 func _node_bonus_text(id: String) -> String:
 	var d: Dictionary = Database.UPGRADE_TREE[id]
+	if d.has("effect_text"):
+		return "(%s)" % String(d.effect_text)
 	if d.has("chance_by_rank"):
 		var rank := GameState.get_upgrade_node_rank(id)
 		var chances: Array = d["chance_by_rank"]
@@ -362,25 +378,64 @@ func _on_reset_upgrade_tree_pressed() -> void:
 
 func _upgrade_node_positions() -> Dictionary:
 	var result := {}
-	for tier in [0, 1, 2, 3]:
-		var ids := _visible_upgrade_ids_in_tier(tier)
-		var count := ids.size()
-		if count == 0:
+	var roots := _visible_upgrade_ids_in_tier(0)
+	for id in roots:
+		result[id] = Vector2(380.0, 485.0)
+
+	var starters := _visible_upgrade_ids_in_tier(1)
+	var slots := _upgrade_starter_slots(starters.size())
+	for i in starters.size():
+		result[starters[i]] = Vector2(slots[i], 405.0)
+
+	for starter_id in starters:
+		var group := GameState.get_upgrade_reveal_group(starter_id)
+		if group.is_empty() or not result.has(starter_id):
 			continue
-		var y := _upgrade_tier_y(tier)
-		if tier <= 1:
-			var spacing := 0.0 if count == 1 else minf(140.0, 360.0 / float(count - 1))
-			var start_x := 250.0 - spacing * float(count - 1) * 0.5
-			for i in count:
-				result[ids[i]] = Vector2(start_x + spacing * float(i), y)
-		else:
-			for id in ids:
-				var parent := GameState.get_upgrade_reveal_parent(id)
-				if parent != "" and result.has(parent):
-					result[id] = Vector2(result[parent].x, y)
-				else:
-					result[id] = Vector2(250.0, y)
+		_add_group_positions(result, starter_id, group)
+
+	for tier in [2, 3]:
+		var ids := _visible_upgrade_ids_in_tier(tier)
+		for id in ids:
+			if result.has(id):
+				continue
+			var parent := GameState.get_upgrade_reveal_parent(id)
+			if parent != "" and result.has(parent):
+				result[id] = Vector2(result[parent].x, _upgrade_tier_y(tier))
+			else:
+				result[id] = Vector2(380.0, _upgrade_tier_y(tier))
 	return result
+
+
+func _upgrade_starter_slots(count: int) -> Array[float]:
+	match count:
+		0:
+			return []
+		1:
+			return [380.0]
+		2:
+			return [250.0, 510.0]
+		3:
+			return [170.0, 380.0, 590.0]
+		_:
+			return [95.0, 285.0, 475.0, 665.0]
+
+
+func _add_group_positions(result: Dictionary, starter_id: String, group: Dictionary) -> void:
+	var origin: Vector2 = result[starter_id]
+	var path_a: Array = group.get("path_a", [])
+	var path_b: Array = group.get("path_b", [])
+	var common := String(group.get("common", ""))
+	var lane_offset := 54.0
+	for i in path_a.size():
+		var id := String(path_a[i])
+		if GameState.is_upgrade_node_visible(id):
+			result[id] = Vector2(origin.x - lane_offset, 310.0 - float(i) * 80.0)
+	for i in path_b.size():
+		var id := String(path_b[i])
+		if GameState.is_upgrade_node_visible(id):
+			result[id] = Vector2(origin.x + lane_offset, 310.0 - float(i) * 80.0)
+	if common != "" and GameState.is_upgrade_node_visible(common):
+		result[common] = Vector2(origin.x, 115.0)
 
 
 func _visible_upgrade_ids_in_tier(tier: int) -> Array[String]:
@@ -397,14 +452,14 @@ func _visible_upgrade_ids_in_tier(tier: int) -> Array[String]:
 func _upgrade_tier_y(tier: int) -> float:
 	match tier:
 		0:
-			return 315.0
+			return 485.0
 		1:
-			return 220.0
+			return 405.0
 		2:
-			return 125.0
+			return 270.0
 		3:
-			return 35.0
-	return 315.0
+			return 160.0
+	return 485.0
 
 
 func _node_short_label(id: String) -> String:
@@ -455,7 +510,18 @@ func _node_short_label(id: String) -> String:
 			return "CRx"
 		"battle_rhythm":
 			return "RHY"
-	return "?"
+	return _node_generated_label(id)
+
+
+func _node_generated_label(id: String) -> String:
+	var d: Dictionary = Database.UPGRADE_TREE[id]
+	var words := String(d.get("name", id)).split(" ", false)
+	var label := ""
+	for word in words:
+		if label.length() >= 4:
+			break
+		label += String(word).substr(0, 1).to_upper()
+	return label if label != "" else "?"
 
 
 func _add_upgrade_node_icon(graph: Control, id: String, pos: Vector2, visible: bool) -> void:
@@ -509,6 +575,10 @@ func _add_upgrade_node_icon(graph: Control, id: String, pos: Vector2, visible: b
 func _node_color(id: String) -> Color:
 	if not GameState.is_upgrade_node_visible(id):
 		return Color(0.11, 0.12, 0.18)
+	if GameState.is_upgrade_node_path_locked(id):
+		return Color(0.14, 0.14, 0.18)
+	if GameState.is_upgrade_node_common_locked(id):
+		return Color(0.20, 0.20, 0.28)
 	if GameState.is_upgrade_node_complete(id):
 		return Color(0.15, 0.48, 0.28)
 	if GameState.can_upgrade_node(id):
@@ -532,6 +602,10 @@ func _node_style(color: Color, highlighted: bool) -> StyleBoxFlat:
 
 
 func _node_link_color(parent_id: String, child_id: String) -> Color:
+	if GameState.is_upgrade_node_path_locked(parent_id) or GameState.is_upgrade_node_path_locked(child_id):
+		return Color(0.24, 0.24, 0.30, 0.75)
+	if GameState.is_upgrade_node_common_locked(child_id):
+		return Color(0.34, 0.34, 0.44, 0.75)
 	if GameState.is_upgrade_node_visible(child_id):
 		return Color(0.72, 0.75, 0.86, 0.85)
 	if GameState.is_upgrade_node_complete(parent_id):

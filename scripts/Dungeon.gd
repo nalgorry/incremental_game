@@ -30,6 +30,13 @@ var _wave_spawn_timer: float = 0.0
 var hero_buff_timer: float = 0.0
 var hero_buff_mult: float = 0.0    # +fraction to attack & attack speed
 var hero_shield: float = 0.0
+var floor_elapsed: float = 0.0
+var floor_kills: int = 0
+var basic_attack_count: int = 0
+var first_ability_cast_used: bool = false
+var last_stand_used: bool = false
+var rampage_timer: float = 0.0
+var rampage_bonus: float = 0.0
 
 var run_gold: int = 0
 var run_emeralds: int = 0
@@ -53,6 +60,8 @@ func begin_run(start_floor: int) -> void:
 	run_gold = 0
 	run_emeralds = 0
 	hero_shield = 0.0
+	last_stand_used = false
+	basic_attack_count = 0
 	_build_environment()
 	_build_ui()
 	_spawn_hero()
@@ -129,6 +138,9 @@ func _start_floor() -> void:
 	waves = _build_waves(floor_num)
 	wave_index = 0
 	_wave_spawn_timer = 0.0
+	floor_elapsed = 0.0
+	floor_kills = 0
+	first_ability_cast_used = false
 	_spawn_wave(wave_index, true)
 
 
@@ -220,6 +232,8 @@ func _process(delta: float) -> void:
 		return
 
 	_update_buff(delta)
+	_update_rampage(delta)
+	floor_elapsed += delta
 	_update_hp_regen(delta)
 	_hero_attack(delta)
 	_cast_abilities(delta)
@@ -272,20 +286,26 @@ func _maybe_spawn_next_wave(delta: float) -> void:
 func _hero_attack(delta: float) -> void:
 	if enemies.is_empty():
 		return
-	var spd: float = hero.attack_speed * (1.0 + (hero_buff_mult if hero_buff_timer > 0.0 else 0.0))
+	var spd: float = hero.attack_speed * (1.0 + (hero_buff_mult if hero_buff_timer > 0.0 else 0.0) + rampage_bonus)
 	hero.atk_timer += delta
 	var interval := 1.0 / maxf(0.1, spd)
 	if hero.atk_timer < interval:
 		return
 	hero.atk_timer -= interval
+	basic_attack_count += 1
 	var target: CombatEntity = enemies[0]
 	var atk: float = hero.attack * (1.0 + (hero_buff_mult if hero_buff_timer > 0.0 else 0.0))
 	var dmg := maxf(1.0, atk - target.defense)
+	if target.hp / maxf(1.0, target.max_hp) <= GameState.upgrade_effect_max("execute_hp_threshold"):
+		dmg *= 1.0 + GameState.upgrade_effect_value("execute_damage_bonus_by_rank")
+	var overpower_every := int(GameState.upgrade_effect_min_positive("overpower_every"))
+	if overpower_every > 0 and basic_attack_count % overpower_every == 0:
+		dmg *= 1.0 + GameState.upgrade_effect_value("overpower_damage_bonus_by_rank")
 	var is_crit := randf() < hero.crit_chance
 	if is_crit:
 		dmg *= hero.crit_damage
 	# Launch a projectile; damage is applied when it reaches the target.
-	_fire_projectile(hero.position, target, Color(0.6, 0.85, 1.0), dmg, is_crit)
+	_fire_projectile(hero.position, target, Color(0.6, 0.85, 1.0), dmg, is_crit, 6.0, 11.0, 1600.0, 0.25, Color(1, 1, 1), false, "basic")
 
 
 func _cast_abilities(delta: float) -> void:
@@ -310,28 +330,34 @@ func _try_cast(ab: Dictionary) -> bool:
 	var id: String = ab.id
 	var d: Dictionary = Database.ABILITIES[id]
 	var power := Database.ability_power(id, ab.level) * GameState.ability_power_multiplier()
+	if not first_ability_cast_used:
+		power *= 1.0 + GameState.upgrade_effect_value("first_cast_power_bonus_by_rank")
+		first_ability_cast_used = true
 	match d.type:
 		"damage":
 			if enemies.is_empty():
 				return false
 			var t: CombatEntity = enemies[0]
+			var damage := power * _ability_target_damage_multiplier(t)
 			_fire_projectile(
 				hero.position,
 				t,
 				Color(1.0, 0.15, 0.05),
-				power,
+				damage,
 				false,
 				10.0,
 				18.0,
 				900.0,
 				0.45,
 				d.color,
-				true
+				true,
+				"ability",
+				id
 			)
 		"aoe":
 			if enemies.is_empty():
 				return false
-			_call_meteor(power, d.color)
+			_call_meteor(power, d.color, id)
 		"dot":
 			if enemies.is_empty():
 				return false
@@ -351,12 +377,23 @@ func _try_cast(ab: Dictionary) -> bool:
 			_spawn_text(hero.position, "+" + str(int(round(power))), d.color, false)
 		_:
 			return false
+	_apply_on_ability_cast(id)
+	_try_spell_echo(id, d, power)
 	return true
 
 
 func _update_buff(delta: float) -> void:
 	if hero_buff_timer > 0.0:
 		hero_buff_timer -= delta
+
+
+func _update_rampage(delta: float) -> void:
+	if rampage_timer <= 0.0:
+		rampage_bonus = 0.0
+		return
+	rampage_timer -= delta
+	if rampage_timer <= 0.0:
+		rampage_bonus = 0.0
 
 
 func _update_hp_regen(delta: float) -> void:
@@ -408,7 +445,10 @@ func _enemy_attacks(delta: float) -> void:
 			1250.0,
 			0.32,
 			Color(1, 0.4, 0.4),
-			false
+			false,
+			"enemy",
+			"",
+			e
 		)
 
 
@@ -424,13 +464,41 @@ func _reap_dead() -> void:
 
 
 func _grant_rewards(e: CombatEntity) -> void:
-	var gold_reward := int(round(float(e.reward_gold) * GameState.gold_reward_multiplier()))
+	floor_kills += 1
+	_apply_on_enemy_killed(e)
+	var gold_mult := GameState.gold_reward_multiplier()
+	if floor_elapsed <= GameState.upgrade_effect_max("gold_rush_duration"):
+		gold_mult += GameState.upgrade_effect_value("gold_rush_bonus_by_rank")
+	if e.is_boss:
+		gold_mult += GameState.upgrade_effect_value("boss_gold_bonus_by_rank")
+	var greedy_cap := GameState.upgrade_effect_value("greedy_gold_cap_by_rank")
+	var greedy_per_kill := GameState.upgrade_effect_value("greedy_gold_per_kill_by_rank")
+	if greedy_cap > 0.0 and greedy_per_kill > 0.0:
+		gold_mult += minf(greedy_cap, greedy_per_kill * float(maxi(0, floor_kills - 1)))
+	var gold_reward := int(round(float(e.reward_gold) * gold_mult))
 	GameState.add_gold(gold_reward)
 	run_gold += gold_reward
-	if randf() < e.emerald_chance:
+	if randf() < e.emerald_chance + GameState.upgrade_effect_value("emerald_chance_bonus_by_rank"):
 		GameState.add_emeralds(e.emerald_amount)
 		run_emeralds += e.emerald_amount
 		_spawn_text(e.position + Vector2(0, -30), "+%d em" % e.emerald_amount, Color(0.4, 0.9, 0.4), false)
+
+
+func _apply_on_enemy_killed(e: CombatEntity) -> void:
+	var heal_pct := GameState.upgrade_effect_value("kill_heal_percent_by_rank")
+	if heal_pct > 0.0:
+		hero.heal(hero.max_hp * heal_pct)
+	var rampage := GameState.upgrade_effect_value("rampage_attack_speed_by_rank")
+	if rampage > 0.0:
+		rampage_bonus = rampage
+		rampage_timer = maxf(1.0, GameState.upgrade_effect_max("rampage_duration"))
+	var battle_text := ""
+	if heal_pct > 0.0:
+		battle_text = "+HP"
+	if rampage > 0.0:
+		battle_text = "Rampage" if battle_text == "" else battle_text + " / Rampage"
+	if battle_text != "":
+		_spawn_text(hero.position + Vector2(0, -75), battle_text, Color(0.7, 1.0, 0.55), false)
 
 
 # --- End of run ------------------------------------------------------------
@@ -573,7 +641,7 @@ func _update_ability_hud() -> void:
 
 
 # --- Projectiles -----------------------------------------------------------
-func _call_meteor(damage: float, color: Color) -> void:
+func _call_meteor(damage: float, color: Color, ability_id: String = "") -> void:
 	var impact_pos := Vector2.ZERO
 	for e in enemies:
 		impact_pos += e.position
@@ -604,12 +672,12 @@ func _call_meteor(damage: float, color: Color) -> void:
 	var tween := create_tween()
 	tween.tween_property(meteor, "position", impact_pos, 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tween.tween_callback(func() -> void:
-		_meteor_impact(impact_pos, damage, color)
+		_meteor_impact(impact_pos, damage, color, ability_id)
 		meteor.queue_free()
 	)
 
 
-func _meteor_impact(impact_pos: Vector2, damage: float, color: Color) -> void:
+func _meteor_impact(impact_pos: Vector2, damage: float, color: Color, ability_id: String = "") -> void:
 	var shockwave := Polygon2D.new()
 	shockwave.position = impact_pos
 	shockwave.polygon = _circle(18.0)
@@ -624,8 +692,11 @@ func _meteor_impact(impact_pos: Vector2, damage: float, color: Color) -> void:
 
 	for e in enemies.duplicate():
 		if is_instance_valid(e) and e.alive:
-			e.take_damage(damage)
-			_spawn_text(e.position, str(int(round(damage))), color, true)
+			var actual_damage := damage * _ability_target_damage_multiplier(e)
+			e.take_damage(actual_damage)
+			if not e.alive and ability_id != "":
+				_on_ability_kill(ability_id)
+			_spawn_text(e.position, str(int(round(actual_damage))), color, true)
 
 
 func _fire_projectile(
@@ -639,7 +710,10 @@ func _fire_projectile(
 	speed: float = 1600.0,
 	max_duration: float = 0.25,
 	impact_text_color: Color = Color(1, 1, 1),
-	impact_text_big: bool = false
+	impact_text_big: bool = false,
+	source_type: String = "",
+	source_id: String = "",
+	source_entity: CombatEntity = null
 ) -> void:
 	var start := from + Vector2(10, -45)
 	var target_pos := target.position + Vector2(0, -40)
@@ -665,33 +739,65 @@ func _fire_projectile(
 	tween.tween_property(ball, "position", target_pos, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	tween.tween_callback(func() -> void:
 		if is_instance_valid(target) and target.alive:
-			var hp_damage := _apply_projectile_damage(target, damage)
+			var hp_damage := _apply_projectile_damage(target, damage, source_entity)
 			if hp_damage > 0.0:
 				_spawn_text(target.position, str(int(round(hp_damage))),
 					Color(1, 1, 0.4) if is_crit else impact_text_color,
 					is_crit or impact_text_big)
+				if source_type == "basic":
+					_on_basic_hit(target, hp_damage)
+				elif source_type == "ability" and not target.alive:
+					_on_ability_kill(source_id)
 		ball.queue_free()
 	)
 
 
-func _apply_projectile_damage(target: CombatEntity, damage: float) -> float:
+func _apply_projectile_damage(target: CombatEntity, damage: float, source_entity: CombatEntity = null) -> float:
 	if target != hero:
 		target.take_damage(damage)
 		return damage
 
 	if hero_shield <= 0.0:
 		target.take_damage(damage)
-		_try_recover_on_hit(damage)
+		_on_hero_damaged(damage, source_entity)
 		return damage
 
 	var absorbed := minf(hero_shield, damage)
 	hero_shield -= absorbed
 	var remaining := damage - absorbed
 	_spawn_text(hero.position + Vector2(0, -18), "-%d shield" % int(round(absorbed)), Color(0.35, 0.65, 1.0), false)
+	var shield_heal := absorbed * GameState.upgrade_effect_value("shield_absorb_heal_by_rank")
+	if shield_heal > 0.0:
+		hero.heal(shield_heal)
 	if remaining > 0.0:
 		target.take_damage(remaining)
-		_try_recover_on_hit(remaining)
+		_on_hero_damaged(remaining, source_entity)
 	return remaining
+
+
+func _on_hero_damaged(hp_damage: float, source_entity: CombatEntity = null) -> void:
+	if hp_damage <= 0.0:
+		return
+	var thorns := GameState.upgrade_effect_value("thorns_by_rank")
+	if thorns > 0.0 and source_entity != null and is_instance_valid(source_entity) and source_entity.alive:
+		var reflected := hp_damage * thorns
+		source_entity.take_damage(reflected)
+		_spawn_text(source_entity.position, str(int(round(reflected))), Color(0.8, 0.55, 1.0), false)
+	_try_last_stand()
+	_try_recover_on_hit(hp_damage)
+
+
+func _try_last_stand() -> void:
+	if hero.alive or last_stand_used:
+		return
+	var recover_pct := GameState.upgrade_effect_value("last_stand_hp_by_rank")
+	if recover_pct <= 0.0:
+		return
+	last_stand_used = true
+	hero.alive = true
+	hero.hp = hero.max_hp * recover_pct
+	hero.heal(0.0)
+	_spawn_text(hero.position + Vector2(0, -100), "Last Stand!", Color(1.0, 0.85, 0.25), true)
 
 
 func _try_recover_on_hit(hp_damage: float) -> void:
@@ -704,6 +810,80 @@ func _try_recover_on_hit(hp_damage: float) -> void:
 	for ab in _abilities:
 		ab.timer = minf(float(ab.cooldown), float(ab.timer) + recover)
 	_spawn_text(hero.position + Vector2(0, -90), "-%.1fs cooldown" % recover, Color(0.55, 0.85, 1.0), false)
+
+
+func _on_basic_hit(target: CombatEntity, damage: float) -> void:
+	var lifesteal := GameState.upgrade_effect_value("life_steal_by_rank")
+	if lifesteal > 0.0:
+		hero.heal(damage * lifesteal)
+	var bleed_chance := GameState.upgrade_effect_value("bleed_chance_by_rank")
+	if bleed_chance > 0.0 and randf() < bleed_chance:
+		var bleed_mult := GameState.upgrade_effect_value("bleed_attack_multiplier_by_rank")
+		var duration := maxf(1.0, GameState.upgrade_effect_max("bleed_duration"))
+		var interval := maxf(0.2, GameState.upgrade_effect_max("bleed_interval"))
+		target.add_dot(hero.attack * bleed_mult, duration, interval)
+		_spawn_text(target.position, "Bleed", Color(0.9, 0.1, 0.1), false)
+	var chain_chance := GameState.upgrade_effect_value("chain_strike_chance_by_rank")
+	if chain_chance > 0.0 and randf() < chain_chance:
+		var next_target := _next_enemy_after(target)
+		if next_target != null:
+			var chain_damage := damage * maxf(0.1, GameState.upgrade_effect_value("chain_strike_damage_multiplier_by_rank"))
+			next_target.take_damage(chain_damage)
+			_spawn_text(next_target.position, str(int(round(chain_damage))), Color(0.6, 0.85, 1.0), false)
+
+
+func _next_enemy_after(source: CombatEntity) -> CombatEntity:
+	for e in enemies:
+		if e != source and e.alive:
+			return e
+	return null
+
+
+func _apply_on_ability_cast(cast_id: String) -> void:
+	var recover := GameState.upgrade_effect_value("arcane_flow_recover_by_rank")
+	if recover <= 0.0:
+		return
+	for ab in _abilities:
+		if String(ab.id) != cast_id:
+			ab.timer = minf(float(ab.cooldown), float(ab.timer) + recover)
+
+
+func _try_spell_echo(id: String, d: Dictionary, original_power: float) -> void:
+	var chance := GameState.upgrade_effect_value("spell_echo_chance_by_rank")
+	if chance <= 0.0 or randf() >= chance:
+		return
+	var power := original_power * maxf(0.1, GameState.upgrade_effect_value("spell_echo_power_multiplier_by_rank"))
+	match d.type:
+		"damage":
+			if enemies.is_empty():
+				return
+			var t: CombatEntity = enemies[0]
+			_fire_projectile(hero.position, t, Color(1.0, 0.35, 0.2), power * _ability_target_damage_multiplier(t), false, 8.0, 14.0, 950.0, 0.45, d.color, true, "ability", id)
+		"aoe":
+			if enemies.is_empty():
+				return
+			_call_meteor(power, d.color, id)
+		"heal":
+			hero.heal(power)
+		"shield":
+			hero_shield = maxf(hero_shield, hero.max_hp * power)
+		_:
+			return
+	_spawn_text(hero.position + Vector2(0, -85), "Spell Echo", Color(0.8, 0.6, 1.0), true)
+
+
+func _ability_target_damage_multiplier(target: CombatEntity) -> float:
+	if target != null and target.is_boss:
+		return 1.0 + GameState.upgrade_effect_value("boss_ability_damage_by_rank")
+	return 1.0
+
+
+func _on_ability_kill(_ability_id: String) -> void:
+	var recover := GameState.upgrade_effect_value("ability_kill_cooldown_recover_by_rank")
+	if recover <= 0.0:
+		return
+	for ab in _abilities:
+		ab.timer = minf(float(ab.cooldown), float(ab.timer) + recover)
 
 
 func _circle(radius: float) -> PackedVector2Array:
