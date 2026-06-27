@@ -424,8 +424,9 @@ func _reap_dead() -> void:
 
 
 func _grant_rewards(e: CombatEntity) -> void:
-	GameState.add_gold(e.reward_gold)
-	run_gold += e.reward_gold
+	var gold_reward := int(round(float(e.reward_gold) * GameState.gold_reward_multiplier()))
+	GameState.add_gold(gold_reward)
+	run_gold += gold_reward
 	if randf() < e.emerald_chance:
 		GameState.add_emeralds(e.emerald_amount)
 		run_emeralds += e.emerald_amount

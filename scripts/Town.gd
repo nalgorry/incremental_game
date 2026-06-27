@@ -165,10 +165,16 @@ func _rebuild_stats() -> void:
 	_stats_list.add_child(summary)
 
 	var hint := Label.new()
-	hint.text = "Upgrade the root to Rank 1 to reveal 3 random Tier 1 skills. First rank in later nodes reveals 1 random skill from the next tier."
+	hint.text = "Upgrade the root to reveal one random Tier 1 skill per category. Later nodes reveal one skill from the same category in the next tier."
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_color", Color(0.55, 0.65, 0.9))
 	_stats_list.add_child(hint)
+
+	var reset_btn := Button.new()
+	reset_btn.text = "Reset Tree (Testing)"
+	reset_btn.tooltip_text = "Clears only hero upgrade tree ranks and revealed nodes."
+	reset_btn.pressed.connect(_on_reset_upgrade_tree_pressed)
+	_stats_list.add_child(reset_btn)
 
 	var graph := Control.new()
 	graph.custom_minimum_size = Vector2(500, 390)
@@ -308,6 +314,16 @@ func _node_bonus_text(id: String) -> String:
 		return "(-%.0f%% ability cooldown per rank)" % (float(d.cooldown_reduction_per_rank) * 100.0)
 	if d.has("ability_power_per_rank"):
 		return "(+%.0f%% ability power per rank)" % (float(d.ability_power_per_rank) * 100.0)
+	if d.has("gold_bonus_by_rank"):
+		var rank := GameState.get_upgrade_node_rank(id)
+		var bonuses: Array = d["gold_bonus_by_rank"]
+		var parts: Array[String] = []
+		for bonus in bonuses:
+			parts.append("+%.0f%%" % (float(bonus) * 100.0))
+		if rank > 0:
+			var index := clampi(rank, 1, bonuses.size()) - 1
+			return "(Current: +%.0f%% gold from kills; ranks: %s)" % [float(bonuses[index]) * 100.0, " / ".join(parts)]
+		return "(Ranks: %s gold from kills)" % " / ".join(parts)
 	if d.has("bonuses"):
 		var bonuses: Dictionary = d.bonuses
 		var parts: Array[String] = []
@@ -322,6 +338,8 @@ func _node_bonus_text(id: String) -> String:
 			else:
 				parts.append("+%s %s" % [formatted, stat.name])
 		return "(%s per rank)" % ", ".join(parts)
+	if not d.has("stat") or not d.has("bonus_per_rank"):
+		return ""
 	var stat_id := String(d.stat)
 	var stat: Dictionary = Database.STATS[stat_id]
 	var value := float(d.bonus_per_rank)
@@ -333,6 +351,12 @@ func _node_bonus_text(id: String) -> String:
 
 func _select_upgrade_node(id: String) -> void:
 	_selected_upgrade_node = id
+	_refresh()
+
+
+func _on_reset_upgrade_tree_pressed() -> void:
+	_selected_upgrade_node = "foundation"
+	GameState.reset_upgrade_tree()
 	_refresh()
 
 
@@ -387,6 +411,14 @@ func _node_short_label(id: String) -> String:
 	match id:
 		"foundation":
 			return ""
+		"basic_attack_update":
+			return "ATK"
+		"basic_heal_update":
+			return "HEAL"
+		"basic_ability_update":
+			return "ABL"
+		"more_gold":
+			return "GOLD"
 		"blade_training":
 			return "ATK"
 		"iron_skin":

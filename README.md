@@ -88,17 +88,19 @@ scripts/
   Town.gd                      Town UI: stat upgrades, ability unlock/upgrade/equip, checkpoint picker
   Dungeon.gd                   Isometric auto-combat: waves, ability casting, rewards, win/loss
   CombatEntity.gd              Hero / enemy token: combat stats, HP bar, simple isometric visuals
+data/
+  skill_tree.json              Editable hero upgrade tree data
 ```
 
 ### Data-driven design
 
-Hero stats, upgrade tree nodes, and abilities are plain dictionary entries in
-`Database.gd`. Adding a new tree node or ability is a **single entry** — the Town
-UI and the combat system both iterate over these catalogs, so no other code
-needs to change.
+Hero stats and abilities are plain dictionary entries in `Database.gd`. The hero
+upgrade tree is loaded from `data/skill_tree.json`, so adding or tuning a skill
+tree node does not require touching GDScript. The Town UI and combat system both
+iterate over these catalogs.
 
 - `Database.STATS` — base stat definitions and display formatting.
-- `Database.UPGRADE_TREE` — limited-rank Gold upgrade nodes, tiers, and visual links.
+- `data/skill_tree.json` — limited-rank Gold upgrade nodes, tiers, and visual links.
 - `Database.ABILITIES` — ability definitions (type, power, cooldown, emerald costs).
 - `Database.enemy_stats()` — per-floor enemy scaling and rewards.
 
@@ -110,9 +112,9 @@ Key knobs live in `Database.gd`:
 
 - `MAX_FLOORS`, `WAVES_PER_FLOOR`, `CHECKPOINT_INTERVAL`, `ENEMIES_PER_WAVE`,
   `MAX_EQUIPPED`.
-- Per-stat `base` values and upgrade tree node `tier`, `bonuses` /
-  `bonus_per_rank` / special effect fields, `max_ranks`, `cost_base`,
-  `cost_growth`, and visual `parents`.
+- Per-stat `base` values in `Database.gd`.
+- Upgrade tree node `tier`, `bonuses` / `bonus_per_rank` / special effect fields,
+  `max_ranks`, `costs`, and visual `parents` in `data/skill_tree.json`.
 - Per-ability `base_power` / `power_growth`, `cooldown`, `unlock_cost`,
   `upgrade_base` / `upgrade_growth`.
 - Enemy/boss scaling and reward formulas in `enemy_stats()`.

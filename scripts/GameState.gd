@@ -7,6 +7,7 @@ signal abilities_changed
 signal progress_changed
 
 const SAVE_PATH := "user://savegame.json"
+const UPGRADE_CATEGORIES: Array[String] = ["Attack", "Defence", "Ability Update", "Misc"]
 
 var gold: int = 0
 var emeralds: int = 0
@@ -126,19 +127,44 @@ func upgrade_tree_node(id: String) -> bool:
 	save_game()
 	return true
 
+func reset_upgrade_tree() -> void:
+	upgrade_node_ranks = {}
+	visible_upgrade_nodes = ["foundation"]
+	visible_upgrade_parents = {}
+	currencies_changed.emit()
+	save_game()
+
 func _reveal_next_upgrade_nodes(source_id: String) -> void:
 	var source: Dictionary = Database.UPGRADE_TREE[source_id]
 	var next_tier := int(source.tier) + 1
-	var reveal_count := 3 if next_tier == 1 else 1
+	if source_id == "foundation" and next_tier == 1:
+		_reveal_one_upgrade_per_category(source_id, next_tier)
+		return
+	var source_category := String(source.get("category", ""))
 	var candidates: Array[String] = []
 	for node_id_raw in Database.UPGRADE_TREE.keys():
 		var node_id := String(node_id_raw)
 		var node: Dictionary = Database.UPGRADE_TREE[node_id]
-		if int(node.tier) == next_tier and not is_upgrade_node_visible(node_id):
+		if int(node.tier) == next_tier and String(node.get("category", "")) == source_category and not is_upgrade_node_visible(node_id):
 			candidates.append(node_id)
 	candidates.shuffle()
-	for i in mini(reveal_count, candidates.size()):
-		var revealed_id := candidates[i]
+	if not candidates.is_empty():
+		var revealed_id := candidates[0]
+		visible_upgrade_nodes.append(revealed_id)
+		visible_upgrade_parents[revealed_id] = source_id
+
+func _reveal_one_upgrade_per_category(source_id: String, tier: int) -> void:
+	for category in UPGRADE_CATEGORIES:
+		var candidates: Array[String] = []
+		for node_id_raw in Database.UPGRADE_TREE.keys():
+			var node_id := String(node_id_raw)
+			var node: Dictionary = Database.UPGRADE_TREE[node_id]
+			if int(node.tier) == tier and bool(node.get("branch_start", false)) and String(node.get("category", "")) == category and not is_upgrade_node_visible(node_id):
+				candidates.append(node_id)
+		candidates.shuffle()
+		if candidates.is_empty():
+			continue
+		var revealed_id := candidates[0]
 		visible_upgrade_nodes.append(revealed_id)
 		visible_upgrade_parents[revealed_id] = source_id
 
@@ -184,6 +210,20 @@ func ability_power_multiplier() -> float:
 		var node: Dictionary = Database.UPGRADE_TREE[node_id]
 		if node.has("ability_power_per_rank"):
 			bonus += float(node.ability_power_per_rank) * float(get_upgrade_node_rank(String(node_id)))
+	return 1.0 + bonus
+
+func gold_reward_multiplier() -> float:
+	var bonus := 0.0
+	for node_id in Database.UPGRADE_TREE.keys():
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		if not node.has("gold_bonus_by_rank"):
+			continue
+		var rank := get_upgrade_node_rank(String(node_id))
+		if rank <= 0:
+			continue
+		var bonuses: Array = node["gold_bonus_by_rank"]
+		var index := clampi(rank, 1, bonuses.size()) - 1
+		bonus += float(bonuses[index])
 	return 1.0 + bonus
 
 func recover_on_hit_chance() -> float:
@@ -354,11 +394,39 @@ func _ensure_upgrade_tree_visibility() -> void:
 	for node_id in visible_upgrade_nodes:
 		if node_id != "foundation" and not visible_upgrade_parents.has(node_id):
 			visible_upgrade_parents[node_id] = _fallback_upgrade_parent(node_id)
+	_ensure_foundation_category_reveals()
 	# Saves from older tree rules may have learned nodes but no revealed choices.
 	for node_id_raw in Database.UPGRADE_TREE.keys():
 		var node_id := String(node_id_raw)
 		if get_upgrade_node_rank(node_id) > 0 and _visible_nodes_in_tier(int(Database.UPGRADE_TREE[node_id].tier) + 1).is_empty():
 			_reveal_next_upgrade_nodes(node_id)
+
+func _ensure_foundation_category_reveals() -> void:
+	if get_upgrade_node_rank("foundation") <= 0:
+		return
+	for category in UPGRADE_CATEGORIES:
+		if _has_visible_upgrade_category(1, category):
+			continue
+		var candidates: Array[String] = []
+		for node_id_raw in Database.UPGRADE_TREE.keys():
+			var node_id := String(node_id_raw)
+			var node: Dictionary = Database.UPGRADE_TREE[node_id]
+			if int(node.tier) == 1 and bool(node.get("branch_start", false)) and String(node.get("category", "")) == category and not is_upgrade_node_visible(node_id):
+				candidates.append(node_id)
+		candidates.shuffle()
+		if candidates.is_empty():
+			continue
+		var revealed_id := candidates[0]
+		visible_upgrade_nodes.append(revealed_id)
+		visible_upgrade_parents[revealed_id] = "foundation"
+
+func _has_visible_upgrade_category(tier: int, category: String) -> bool:
+	for node_id_raw in Database.UPGRADE_TREE.keys():
+		var node_id := String(node_id_raw)
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		if int(node.tier) == tier and String(node.get("category", "")) == category and is_upgrade_node_visible(node_id):
+			return true
+	return false
 
 func _visible_nodes_in_tier(tier: int) -> Array[String]:
 	var result: Array[String] = []
