@@ -1,0 +1,42 @@
+{
+  "stage_1": {
+    "name": "First Stage",
+    "desc": "Only Tier 2 skills can appear.",
+    "tier_weights": {
+      "2": 1.0
+    }
+  },
+  "stage_2": {
+    "name": "Second Stage",
+    "desc": "Tier 2 and Tier 3 skills have equal chance to appear.",
+    "tier_weights": {
+      "2": 0.5,
+      "3": 0.5
+    }
+  },
+  "stage_3": {
+    "name": "Third Stage",
+    "desc": "Tier 3 skills are most common, with smaller chances for Tier 2 and Tier 4.",
+    "tier_weights": {
+      "2": 0.2,
+      "3": 0.6,
+      "4": 0.2
+    }
+  },
+  "stage_4": {
+    "name": "Fourth Stage",
+    "desc": "Tier 3 and Tier 4 skills have equal chance to appear.",
+    "tier_weights": {
+      "3": 0.5,
+      "4": 0.5
+    }
+  },
+  "stage_5": {
+    "name": "Fifth Stage",
+    "desc": "Tier 4 skills are the main reveal pool, with a smaller chance for Tier 3.",
+    "tier_weights": {
+      "3": 0.2,
+      "4": 0.8
+    }
+  }
+}

@@ -53,18 +53,18 @@
     "tier": 1,
     "category": "Misc",
     "branch_start": true,
-    "desc": "This will be the starting point for a tree of new and fantastic gold abilities.",
+    "desc": "This will be the starting point for a tree of new and fantastic abilities.",
     "gold_bonus_by_rank": [0.10],
     "max_ranks": 1,
     "costs": [35],
     "parents": ["foundation"]
   },
   "blade_training": {
-    "name": "Blade Training",
+    "name": "Increase Attack",
     "order": 20,
     "tier": 2,
     "category": "Attack",
-    "desc": "Hit harder with every basic attack.",
+    "desc": "Increase basic attack damage.",
     "stat": "attack",
     "bonus_per_rank": 4.0,
     "max_ranks": 3,
@@ -72,11 +72,11 @@
     "parents": ["basic_attack_update"]
   },
   "quick_casting": {
-    "name": "Quick Casting",
+    "name": "Increase Attack Speed",
     "order": 21,
     "tier": 2,
     "category": "Attack",
-    "desc": "Attack faster while abilities cycle.",
+    "desc": "Increase basic attack speed.",
     "stat": "attack_speed",
     "bonus_per_rank": 0.08,
     "max_ranks": 2,
@@ -84,11 +84,11 @@
     "parents": ["basic_attack_update"]
   },
   "iron_skin": {
-    "name": "Iron Skin",
+    "name": "Increase Defence",
     "order": 22,
     "tier": 2,
     "category": "Defence",
-    "desc": "Reduce incoming damage.",
+    "desc": "Increase defence.",
     "stat": "defense",
     "bonus_per_rank": 1.5,
     "max_ranks": 3,
@@ -108,11 +108,11 @@
     "parents": ["basic_heal_update"]
   },
   "basic_reserves": {
-    "name": "Basic Reserves",
+    "name": "Increase HP",
     "order": 24,
     "tier": 2,
     "category": "Defence",
-    "desc": "A deeper health pool for long runs.",
+    "desc": "Increase maximum HP.",
     "stat": "max_hp",
     "bonus_per_rank": 30.0,
     "max_ranks": 3,
@@ -144,7 +144,7 @@
   "double_spell": {
     "name": "Double Spell",
     "order": 27,
-    "tier": 2,
+    "tier": 3,
     "category": "Misc",
     "desc": "Abilities can reduce their next cooldown by 50%.",
     "chance_by_rank": [0.10, 0.15, 0.25],
@@ -152,9 +152,156 @@
     "costs": [95, 120, 145],
     "parents": ["more_gold"]
   },
+  "focused_strikes": {
+    "name": "Increase Crit Chance",
+    "order": 28,
+    "tier": 2,
+    "category": "Attack",
+    "desc": "Increase the chance for basic attacks to critically hit.",
+    "stat": "crit_chance",
+    "bonus_per_rank": 0.02,
+    "max_ranks": 3,
+    "costs": [80, 115, 150],
+    "parents": ["basic_attack_update"]
+  },
+  "sharp_edges": {
+    "name": "Increase Crit Damage",
+    "order": 29,
+    "tier": 2,
+    "category": "Attack",
+    "desc": "Increase critical hit damage.",
+    "stat": "crit_damage",
+    "bonus_per_rank": 0.08,
+    "max_ranks": 3,
+    "costs": [90, 125, 160],
+    "parents": ["basic_attack_update"]
+  },
+  "steady_training": {
+    "name": "Increase Basic Damage",
+    "order": 30,
+    "tier": 2,
+    "category": "Attack",
+    "desc": "Add a small amount of reliable attack power.",
+    "stat": "attack",
+    "bonus_per_rank": 2.0,
+    "max_ranks": 3,
+    "costs": [65, 95, 125],
+    "parents": ["basic_attack_update"]
+  },
+  "shield_training": {
+    "name": "Increase Shield",
+    "order": 31,
+    "tier": 2,
+    "category": "Defence",
+    "desc": "Increase Magic Shield strength.",
+    "ability_power_per_rank": 0.01,
+    "max_ranks": 3,
+    "costs": [90, 125, 160],
+    "parents": ["basic_heal_update"]
+  },
+  "healing_practice": {
+    "name": "Increase Healing",
+    "order": 32,
+    "tier": 2,
+    "category": "Defence",
+    "desc": "Increase passive healing and recovery.",
+    "stat": "hp_regen",
+    "bonus_per_rank": 0.5,
+    "max_ranks": 3,
+    "costs": [80, 110, 140],
+    "parents": ["basic_heal_update"]
+  },
+  "spell_power_training": {
+    "name": "Increase Ability Damage",
+    "order": 33,
+    "tier": 2,
+    "category": "Ability Update",
+    "desc": "Increase ability power.",
+    "ability_power_per_rank": 0.01,
+    "max_ranks": 3,
+    "costs": [100, 135, 170],
+    "parents": ["basic_ability_update"]
+  },
+  "cooldown_training": {
+    "name": "Increase Ability Speed",
+    "order": 34,
+    "tier": 2,
+    "category": "Ability Update",
+    "desc": "Reduce ability cooldowns.",
+    "cooldown_reduction_per_rank": 0.01,
+    "max_ranks": 3,
+    "costs": [100, 135, 170],
+    "parents": ["basic_ability_update"]
+  },
+  "first_spell_training": {
+    "name": "Increase First Cast",
+    "order": 35,
+    "tier": 2,
+    "category": "Ability Update",
+    "desc": "Increase the first ability cast each floor.",
+    "first_cast_power_bonus_by_rank": [0.10, 0.20, 0.30],
+    "max_ranks": 3,
+    "costs": [120, 155, 190],
+    "parents": ["basic_ability_update"]
+  },
+  "simple_spell_recovery": {
+    "name": "Increase Cooldown Recovery",
+    "order": 36,
+    "tier": 2,
+    "category": "Ability Update",
+    "desc": "Recover a small amount of cooldown when abilities are used.",
+    "arcane_flow_recover_by_rank": [0.10, 0.15, 0.20],
+    "max_ranks": 3,
+    "costs": [130, 165, 200],
+    "parents": ["basic_ability_update"]
+  },
+  "gold_drop": {
+    "name": "Increase Gold Drop",
+    "order": 37,
+    "tier": 2,
+    "category": "Misc",
+    "desc": "Increase gold dropped by enemies.",
+    "gold_bonus_by_rank": [0.05, 0.10, 0.15],
+    "max_ranks": 3,
+    "costs": [75, 110, 145],
+    "parents": ["more_gold"]
+  },
+  "gem_drop": {
+    "name": "Increase Gem Drop",
+    "order": 38,
+    "tier": 2,
+    "category": "Misc",
+    "desc": "Increase enemy gem drop chance.",
+    "emerald_chance_bonus_by_rank": [0.005, 0.01, 0.015],
+    "max_ranks": 3,
+    "costs": [85, 120, 155],
+    "parents": ["more_gold"]
+  },
+  "simple_discount": {
+    "name": "Increase Discount",
+    "order": 39,
+    "tier": 2,
+    "category": "Misc",
+    "desc": "Reduce gold upgrade costs.",
+    "upgrade_discount_by_rank": [0.01, 0.02, 0.03],
+    "max_ranks": 3,
+    "costs": [110, 145, 180],
+    "parents": ["more_gold"]
+  },
+  "simple_boss_gold": {
+    "name": "Increase Boss Gold",
+    "order": 40,
+    "tier": 2,
+    "category": "Misc",
+    "desc": "Increase gold dropped by bosses.",
+    "boss_gold_bonus_by_rank": [0.10, 0.20, 0.30],
+    "max_ranks": 3,
+    "costs": [120, 155, 190],
+    "parents": ["more_gold"]
+  },
   "advanced_blade_training": {
     "name": "Advanced Blade Training",
-    "order": 30,
+    "order": 60,
     "tier": 3,
     "category": "Attack",
     "desc": "Sharper technique for deeper floors.",
@@ -273,7 +420,7 @@
   "chain_strike": {
     "name": "Chain Strike",
     "order": 40,
-    "tier": 2,
+    "tier": 3,
     "category": "Attack",
     "desc": "Basic attacks can bounce to a second enemy.",
     "effect_text": "5% / 10% / 15% chance to hit a second enemy for 50% damage.",
@@ -286,7 +433,7 @@
   "execute_weakness": {
     "name": "Execute Weakness",
     "order": 41,
-    "tier": 2,
+    "tier": 3,
     "category": "Attack",
     "desc": "Deal more damage to wounded enemies.",
     "effect_text": "+15% / +30% / +50% damage to enemies below 30% HP.",
@@ -299,7 +446,7 @@
   "overpower": {
     "name": "Overpower",
     "order": 42,
-    "tier": 2,
+    "tier": 3,
     "category": "Attack",
     "desc": "Every few basic attacks, unleash one stronger hit.",
     "effect_text": "Every 5th basic attack deals +50% / +100% / +150% damage.",
@@ -312,7 +459,7 @@
   "bleeding_strikes": {
     "name": "Bleeding Strikes",
     "order": 43,
-    "tier": 2,
+    "tier": 3,
     "category": "Attack",
     "desc": "Basic attacks can apply a short bleed.",
     "effect_text": "5% / 10% / 15% chance to bleed for 10% / 15% / 20% attack per second.",
@@ -327,7 +474,7 @@
   "rampage": {
     "name": "Rampage",
     "order": 44,
-    "tier": 2,
+    "tier": 3,
     "category": "Attack",
     "desc": "Kills briefly increase attack speed.",
     "effect_text": "Enemy kills grant +5% / +8% / +12% attack speed for 3s.",
@@ -340,7 +487,7 @@
   "life_steal": {
     "name": "Life Steal",
     "order": 45,
-    "tier": 2,
+    "tier": 3,
     "category": "Defence",
     "desc": "Basic attacks heal the mage for part of damage dealt.",
     "effect_text": "Basic attacks heal for 1% / 2% / 3% of damage dealt.",
@@ -352,7 +499,7 @@
   "thorns": {
     "name": "Thorns",
     "order": 46,
-    "tier": 2,
+    "tier": 3,
     "category": "Defence",
     "desc": "Reflect part of incoming damage back to attackers.",
     "effect_text": "Reflect 5% / 10% / 15% of HP damage taken.",
@@ -364,7 +511,7 @@
   "last_stand": {
     "name": "Last Stand",
     "order": 47,
-    "tier": 2,
+    "tier": 3,
     "category": "Defence",
     "desc": "Once per run, survive lethal damage.",
     "effect_text": "Once per run, survive lethal damage with 10% / 20% / 30% HP.",
@@ -376,7 +523,7 @@
   "battle_mending": {
     "name": "Battle Mending",
     "order": 48,
-    "tier": 2,
+    "tier": 3,
     "category": "Defence",
     "desc": "Killing an enemy restores HP.",
     "effect_text": "Enemy kills restore 2% / 4% / 6% max HP.",
@@ -388,7 +535,7 @@
   "shield_recovery": {
     "name": "Shield Recovery",
     "order": 49,
-    "tier": 2,
+    "tier": 3,
     "category": "Defence",
     "desc": "Magic Shield converts absorbed damage into healing.",
     "effect_text": "Heal for 10% / 20% / 30% of shield damage absorbed.",
@@ -400,7 +547,7 @@
   "spell_echo": {
     "name": "Spell Echo",
     "order": 50,
-    "tier": 2,
+    "tier": 3,
     "category": "Ability Update",
     "desc": "Abilities can repeat once at reduced power.",
     "effect_text": "3% / 6% / 10% chance to repeat an ability at 50% power.",
@@ -413,7 +560,7 @@
   "arcane_flow": {
     "name": "Arcane Flow",
     "order": 51,
-    "tier": 2,
+    "tier": 3,
     "category": "Ability Update",
     "desc": "Casting abilities helps other abilities recover.",
     "effect_text": "Casting an ability recovers 0.2s / 0.4s / 0.6s cooldown on other abilities.",
@@ -425,7 +572,7 @@
   "empowered_first_cast": {
     "name": "Empowered First Cast",
     "order": 52,
-    "tier": 2,
+    "tier": 3,
     "category": "Ability Update",
     "desc": "The first ability cast each floor is stronger.",
     "effect_text": "First ability cast each floor has +50% / +100% / +150% power.",
@@ -437,7 +584,7 @@
   "boss_focus": {
     "name": "Boss Focus",
     "order": 53,
-    "tier": 2,
+    "tier": 3,
     "category": "Ability Update",
     "desc": "Abilities hit bosses harder.",
     "effect_text": "Abilities deal +10% / +20% / +35% damage to bosses.",
@@ -449,7 +596,7 @@
   "quick_recovery": {
     "name": "Quick Recovery",
     "order": 54,
-    "tier": 2,
+    "tier": 3,
     "category": "Ability Update",
     "desc": "Ability kills recover cooldown.",
     "effect_text": "When an ability kills an enemy, recover 0.5s / 1.0s / 1.5s cooldown.",
@@ -461,7 +608,7 @@
   "gold_rush": {
     "name": "Gold Rush",
     "order": 55,
-    "tier": 2,
+    "tier": 3,
     "category": "Misc",
     "desc": "Gain extra gold early in each floor.",
     "effect_text": "For the first 10s of each floor, gain +25% / +50% / +100% gold.",
@@ -474,7 +621,7 @@
   "lucky_emeralds": {
     "name": "Lucky Emeralds",
     "order": 56,
-    "tier": 2,
+    "tier": 3,
     "category": "Misc",
     "desc": "Enemies have a higher chance to drop emeralds.",
     "effect_text": "+1% / +2% / +3% emerald drop chance.",
@@ -486,7 +633,7 @@
   "discount_training": {
     "name": "Discount Training",
     "order": 57,
-    "tier": 2,
+    "tier": 3,
     "category": "Misc",
     "desc": "Gold skill upgrades cost less.",
     "effect_text": "Gold skill upgrade costs are reduced by 3% / 6% / 10%.",
@@ -498,7 +645,7 @@
   "treasure_boss": {
     "name": "Treasure Boss",
     "order": 58,
-    "tier": 2,
+    "tier": 3,
     "category": "Misc",
     "desc": "Boss enemies drop more gold.",
     "effect_text": "Bosses drop +25% / +50% / +100% more gold.",
@@ -510,7 +657,7 @@
   "greedy_momentum": {
     "name": "Greedy Momentum",
     "order": 59,
-    "tier": 2,
+    "tier": 3,
     "category": "Misc",
     "desc": "Each kill increases gold for the rest of the floor.",
     "effect_text": "Each enemy killed gives +1% gold this floor, stacking to 10% / 20% / 30%.",

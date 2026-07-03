@@ -59,22 +59,31 @@ const STATS := {
 # touching GDScript.
 # ---------------------------------------------------------------------------
 const UPGRADE_TREE_PATH := "res://data/skill_tree.json"
+const UPGRADE_TREE_STAGES_PATH := "res://data/skill_tree_stages.json"
+const DIFFICULTY_SCALING_PATH := "res://data/difficulty_scaling.json"
 var UPGRADE_TREE: Dictionary = {}
+var UPGRADE_TREE_STAGES: Dictionary = {}
+var DIFFICULTY_SCALING: Dictionary = {}
 
 
 func _init() -> void:
 	UPGRADE_TREE = _load_upgrade_tree()
+	UPGRADE_TREE_STAGES = _load_json_dictionary(UPGRADE_TREE_STAGES_PATH, "Skill tree stages JSON")
+	DIFFICULTY_SCALING = _load_json_dictionary(DIFFICULTY_SCALING_PATH, "Difficulty scaling JSON")
 
 
 func _load_upgrade_tree() -> Dictionary:
-	var file := FileAccess.open(UPGRADE_TREE_PATH, FileAccess.READ)
+	return _load_json_dictionary(UPGRADE_TREE_PATH, "Skill tree JSON")
+
+func _load_json_dictionary(path: String, label: String) -> Dictionary:
+	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
-		push_error("Could not load skill tree JSON: %s" % UPGRADE_TREE_PATH)
+		push_error("Could not load %s: %s" % [label, path])
 		return {}
 	var parsed = JSON.parse_string(file.get_as_text())
 	file.close()
 	if typeof(parsed) != TYPE_DICTIONARY:
-		push_error("Skill tree JSON root must be an object.")
+		push_error("%s root must be an object." % label)
 		return {}
 	return parsed
 
@@ -108,7 +117,7 @@ const ABILITIES := {
 	"poison_cloud": {
 		"name": "Magic Shield", "order": 2,
 		"type": "shield", "target": "self",
-		"desc": "Gain a shield equal to 50% of starting life.",
+		"desc": "Gain a shield based on max HP. Upgrades increase strength and reduce cooldown.",
 		"cooldown": 40.0,
 		"cooldown_reduction_per_level": 2.0, "cooldown_min": 20.0,
 		"base_power": 0.5, "power_growth": 0.05,
@@ -187,27 +196,48 @@ static func ability_cooldown(id: String, level: int) -> float:
 	var min_cooldown := float(d.get("cooldown_min", 0.1))
 	return maxf(min_cooldown, float(d.cooldown) - reduction)
 
+static func ability_description(id: String, level: int, power_mult: float = 1.0, cooldown_mult: float = 1.0) -> String:
+	var d: Dictionary = ABILITIES[id]
+	var display_level := maxi(level, 1)
+	var power := ability_power(id, display_level) * power_mult
+	var cooldown := ability_cooldown(id, display_level) * cooldown_mult
+	match String(d.type):
+		"shield":
+			return "Gain a shield equal to %.0f%% of max HP. Cooldown: %.0fs." % [power * 100.0, cooldown]
+		"damage":
+			return "%s Power: %.0f. Cooldown: %.1fs." % [d.desc, power, cooldown]
+		"aoe":
+			return "%s Power: %.0f. Cooldown: %.1fs." % [d.desc, power, cooldown]
+		"heal":
+			return "%s Heals %.0f HP. Cooldown: %.1fs." % [d.desc, power, cooldown]
+		"buff":
+			return "%s Boost: +%.0f%% for %.0fs. Cooldown: %.1fs." % [d.desc, power * 100.0, float(d.buff_duration), cooldown]
+		_:
+			return String(d.desc)
+
 # --- Enemy / floor scaling -------------------------------------------------
-static func enemy_stats(floor_num: int, is_boss: bool) -> Dictionary:
+func enemy_stats(floor_num: int, is_boss: bool) -> Dictionary:
 	var f := float(floor_num)
-	var hp := 30.0 * pow(1.12, f - 1.0)
-	var atk := 5.0 * pow(1.10, f - 1.0)
-	var def := 1.0 + (f - 1.0) * 0.5
-	var gold := int(ceil(4.0 * pow(1.09, f - 1.0)))
-	var emerald_chance := 0.15
-	var emerald_amount := 1
+	var normal: Dictionary = DIFFICULTY_SCALING.get("normal_enemy", {})
+	var boss: Dictionary = DIFFICULTY_SCALING.get("boss_multiplier", {})
+	var hp := float(normal.get("hp_base", 30.0)) * pow(float(normal.get("hp_growth", 1.12)), f - 1.0)
+	var atk := float(normal.get("attack_base", 5.0)) * pow(float(normal.get("attack_growth", 1.10)), f - 1.0)
+	var def := float(normal.get("defense_base", 1.0)) + (f - 1.0) * float(normal.get("defense_per_floor", 0.5))
+	var gold := int(ceil(float(normal.get("gold_base", 4.0)) * pow(float(normal.get("gold_growth", 1.09)), f - 1.0)))
+	var emerald_chance := float(normal.get("emerald_chance", 0.15))
+	var emerald_amount := int(normal.get("emerald_amount", 1))
 	if is_boss:
-		hp *= 6.0
-		atk *= 1.8
-		def *= 1.5
-		gold *= 12
-		emerald_chance = 1.0
-		emerald_amount = 3 + int(floor(f / 10.0))
+		hp *= float(boss.get("hp", 6.0))
+		atk *= float(boss.get("attack", 1.8))
+		def *= float(boss.get("defense", 1.5))
+		gold = int(round(float(gold) * float(boss.get("gold", 12.0))))
+		emerald_chance = float(boss.get("emerald_chance", 1.0))
+		emerald_amount = int(boss.get("emerald_amount_base", 3)) + int(floor(f / 10.0)) * int(boss.get("emerald_amount_per_10_floors", 1))
 	return {
 		"max_hp": hp,
 		"attack": atk,
 		"defense": def,
-		"attack_speed": 0.8,
+		"attack_speed": float(normal.get("attack_speed", 0.8)),
 		"gold": gold,
 		"emerald_chance": emerald_chance,
 		"emerald_amount": emerald_amount,

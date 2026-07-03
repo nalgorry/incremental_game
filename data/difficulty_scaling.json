@@ -1,0 +1,24 @@
+{
+  "normal_enemy": {
+    "hp_base": 30.0,
+    "hp_growth": 1.12,
+    "attack_base": 5.0,
+    "attack_growth": 1.10,
+    "defense_base": 1.0,
+    "defense_per_floor": 0.5,
+    "attack_speed": 0.8,
+    "gold_base": 4.0,
+    "gold_growth": 1.09,
+    "emerald_chance": 0.15,
+    "emerald_amount": 1
+  },
+  "boss_multiplier": {
+    "hp": 6.0,
+    "attack": 1.8,
+    "defense": 1.5,
+    "gold": 12.0,
+    "emerald_chance": 1.0,
+    "emerald_amount_base": 3,
+    "emerald_amount_per_10_floors": 1
+  }
+}

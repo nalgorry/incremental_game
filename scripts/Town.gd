@@ -7,11 +7,19 @@ signal go_to_dungeon(start_floor: int)
 var _gold_label: Label
 var _emerald_label: Label
 var _stats_list: VBoxContainer
+var _stats_scroll: ScrollContainer
 var _abilities_list: VBoxContainer
 var _equipped_label: Label
 var _checkpoint_option: OptionButton
 var _progress_label: Label
+var _hover_upgrade_title: Label
+var _hover_upgrade_desc: Label
+var _node_hover_popup: Panel
+var _node_hover_popup_title: Label
+var _node_hover_popup_desc: Label
 var _selected_upgrade_node: String = "foundation"
+var _stats_overlay: ColorRect
+var _stats_content: VBoxContainer
 
 
 func _ready() -> void:
@@ -20,16 +28,19 @@ func _ready() -> void:
 	GameState.abilities_changed.connect(_refresh)
 	GameState.progress_changed.connect(_refresh)
 	_refresh()
+	_scroll_upgrade_tree_to_bottom.call_deferred()
 
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0.09, 0.09, 0.13)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.set_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.set_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 24)
 	margin.add_theme_constant_override("margin_right", 24)
 	margin.add_theme_constant_override("margin_top", 16)
@@ -37,35 +48,55 @@ func _build_ui() -> void:
 	add_child(margin)
 
 	var root := VBoxContainer.new()
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
 
 	# --- Header -------------------------------------------------------------
 	var header := HBoxContainer.new()
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(header)
 
 	var title := Label.new()
 	title.text = "TOWN"
 	title.add_theme_font_size_override("font_size", 32)
+	title.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	header.add_child(title)
+
+	var header_gap := Control.new()
+	header_gap.custom_minimum_size = Vector2(32, 0)
+	header.add_child(header_gap)
+
+	var currencies := HBoxContainer.new()
+	currencies.add_theme_constant_override("separation", 20)
+	currencies.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	header.add_child(currencies)
+
+	_gold_label = Label.new()
+	_gold_label.text = "Gold: 0"
+	_gold_label.add_theme_font_size_override("font_size", 22)
+	_gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	currencies.add_child(_gold_label)
+
+	_emerald_label = Label.new()
+	_emerald_label.text = "Emeralds: 0"
+	_emerald_label.add_theme_font_size_override("font_size", 22)
+	_emerald_label.add_theme_color_override("font_color", Color(0.4, 0.9, 0.4))
+	currencies.add_child(_emerald_label)
+
+	var stats_gap := Control.new()
+	stats_gap.custom_minimum_size = Vector2(40, 0)
+	header.add_child(stats_gap)
+
+	var stats_btn := Button.new()
+	stats_btn.text = "Hero Stats"
+	stats_btn.pressed.connect(_toggle_player_stats_panel)
+	header.add_child(stats_btn)
 
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(spacer)
-
-	_gold_label = Label.new()
-	_gold_label.add_theme_font_size_override("font_size", 22)
-	_gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
-	header.add_child(_gold_label)
-
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(24, 0)
-	header.add_child(gap)
-
-	_emerald_label = Label.new()
-	_emerald_label.add_theme_font_size_override("font_size", 22)
-	_emerald_label.add_theme_color_override("font_color", Color(0.4, 0.9, 0.4))
-	header.add_child(_emerald_label)
 
 	# --- Body: three columns ------------------------------------------------
 	var columns := HBoxContainer.new()
@@ -77,6 +108,7 @@ func _build_ui() -> void:
 	_abilities_list = _make_column(columns, "ABILITIES  (Emeralds)", 0.40)
 	var run_col := _make_column(columns, "START RUN", 0.18)
 	_build_run_column(run_col)
+	_build_player_stats_overlay()
 
 
 func _make_column(parent: Control, title_text: String, stretch: float) -> VBoxContainer:
@@ -106,6 +138,8 @@ func _make_column(parent: Control, title_text: String, stretch: float) -> VBoxCo
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vbox.add_child(scroll)
+	if title_text.begins_with("HERO UPGRADE TREE"):
+		_stats_scroll = scroll
 
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -144,6 +178,8 @@ func _build_run_column(col: VBoxContainer) -> void:
 func _refresh() -> void:
 	_gold_label.text = "Gold: %d" % GameState.gold
 	_emerald_label.text = "Emeralds: %d" % GameState.emeralds
+	_gold_label.reset_size()
+	_emerald_label.reset_size()
 	_progress_label.text = "Deepest floor: %d / %d\nHighest checkpoint: %d" % [
 		GameState.deepest_floor, Database.MAX_FLOORS, GameState.highest_checkpoint
 	]
@@ -151,9 +187,12 @@ func _refresh() -> void:
 	_rebuild_abilities()
 	_rebuild_checkpoints()
 	_update_equipped_label()
+	if _stats_overlay.visible:
+		_refresh_player_stats_panel()
 
 
 func _rebuild_stats() -> void:
+	_hide_node_hover_popup()
 	for c in _stats_list.get_children():
 		c.queue_free()
 
@@ -176,18 +215,34 @@ func _rebuild_stats() -> void:
 	reset_btn.pressed.connect(_on_reset_upgrade_tree_pressed)
 	_stats_list.add_child(reset_btn)
 
+	var gold_test_btn := Button.new()
+	gold_test_btn.text = "+10,000 Gold (Testing)"
+	gold_test_btn.tooltip_text = "Adds 10,000 gold for testing upgrades."
+	gold_test_btn.pressed.connect(_on_add_test_gold_pressed)
+	_stats_list.add_child(gold_test_btn)
+
 	var graph := Control.new()
-	graph.custom_minimum_size = Vector2(760, 540)
+	graph.custom_minimum_size = Vector2(760, 1300)
 	graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_stats_list.add_child(graph)
 	_build_upgrade_tree_graph(graph)
+	_build_upgrade_hover_preview()
 	_build_upgrade_node_details()
+
+
+func _scroll_upgrade_tree_to_bottom() -> void:
+	if _stats_scroll == null:
+		return
+	await get_tree().process_frame
+	var scrollbar := _stats_scroll.get_v_scroll_bar()
+	_stats_scroll.scroll_vertical = int(scrollbar.max_value)
 
 
 func _build_upgrade_tree_graph(graph: Control) -> void:
 	var positions := _upgrade_node_positions()
 	var ids := Database.UPGRADE_TREE.keys()
 	ids.sort_custom(func(a, b): return Database.UPGRADE_TREE[a].order < Database.UPGRADE_TREE[b].order)
+	_build_node_hover_popup(graph)
 
 	# Draw parent links first so circular node buttons sit above them.
 	for id in ids:
@@ -221,13 +276,14 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		btn.text = _node_short_label(id) if visible else "?"
 		btn.position = positions[id] - Vector2(30, 30)
 		btn.size = Vector2(60, 60)
-		btn.tooltip_text = d.name
 		btn.add_theme_font_size_override("font_size", 12)
 		btn.add_theme_stylebox_override("normal", _node_style(_node_color(id), selected))
 		btn.add_theme_stylebox_override("hover", _node_style(_node_color(id).lightened(0.15), true))
 		btn.add_theme_stylebox_override("pressed", _node_style(_node_color(id).darkened(0.1), true))
 		btn.add_theme_color_override("font_color", Color(0.45, 0.45, 0.55) if path_locked else Color(0.95, 0.95, 1.0))
-		btn.pressed.connect(func(): _select_upgrade_node(id))
+		btn.pressed.connect(func(): _on_upgrade_node_pressed(id))
+		btn.mouse_entered.connect(func(): _preview_upgrade_node(id, positions[id]))
+		btn.mouse_exited.connect(func(): _clear_upgrade_preview(id))
 		graph.add_child(btn)
 		_add_upgrade_node_icon(graph, id, positions[id], visible)
 
@@ -235,10 +291,67 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		rank_label.text = "LOCK" if path_locked else ("%d/%d" % [GameState.get_upgrade_node_rank(id), int(d.max_ranks)] if visible else "LOCK")
 		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		rank_label.add_theme_font_size_override("font_size", 10)
-		rank_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.65) if path_locked else (Color(0.6, 0.95, 0.6) if complete else Color(0.75, 0.75, 0.85)))
+		rank_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.65) if path_locked else (Color(0.95, 0.88, 0.45) if complete else Color(0.75, 0.75, 0.85)))
 		rank_label.position = positions[id] + Vector2(-32, 34)
 		rank_label.size = Vector2(64, 16)
 		graph.add_child(rank_label)
+
+
+func _build_upgrade_hover_preview() -> void:
+	var panel := PanelContainer.new()
+	_stats_list.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_bottom", 6)
+	panel.add_child(margin)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	margin.add_child(box)
+
+	_hover_upgrade_title = Label.new()
+	_hover_upgrade_title.text = "Hover a node to preview"
+	_hover_upgrade_title.add_theme_font_size_override("font_size", 13)
+	_hover_upgrade_title.add_theme_color_override("font_color", Color(0.75, 0.82, 1.0))
+	box.add_child(_hover_upgrade_title)
+
+	_hover_upgrade_desc = Label.new()
+	_hover_upgrade_desc.text = "Click a node to pin its full upgrade details below."
+	_hover_upgrade_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hover_upgrade_desc.add_theme_font_size_override("font_size", 12)
+	_hover_upgrade_desc.add_theme_color_override("font_color", Color(0.7, 0.7, 0.75))
+	box.add_child(_hover_upgrade_desc)
+
+
+func _build_node_hover_popup(graph: Control) -> void:
+	_node_hover_popup = Panel.new()
+	_node_hover_popup.visible = false
+	_node_hover_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_node_hover_popup.z_index = 200
+	_node_hover_popup.size = Vector2(260, 120)
+	_node_hover_popup.custom_minimum_size = Vector2(260, 120)
+	_node_hover_popup.add_theme_stylebox_override("panel", _tooltip_style())
+	graph.add_child(_node_hover_popup)
+
+	_node_hover_popup_title = Label.new()
+	_node_hover_popup_title.position = Vector2(10, 8)
+	_node_hover_popup_title.size = Vector2(240, 20)
+	_node_hover_popup_title.clip_text = true
+	_node_hover_popup_title.add_theme_font_size_override("font_size", 13)
+	_node_hover_popup_title.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+	_node_hover_popup.add_child(_node_hover_popup_title)
+
+	_node_hover_popup_desc = Label.new()
+	_node_hover_popup_desc.position = Vector2(10, 32)
+	_node_hover_popup_desc.size = Vector2(240, 78)
+	_node_hover_popup_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_node_hover_popup_desc.clip_text = true
+	_node_hover_popup_desc.add_theme_font_size_override("font_size", 11)
+	_node_hover_popup_desc.add_theme_color_override("font_color", Color(0.76, 0.76, 0.82))
+	_node_hover_popup.add_child(_node_hover_popup_desc)
 
 
 func _build_upgrade_node_details() -> void:
@@ -370,9 +483,77 @@ func _select_upgrade_node(id: String) -> void:
 	_refresh()
 
 
+func _on_upgrade_node_pressed(id: String) -> void:
+	_hide_node_hover_popup()
+	_selected_upgrade_node = id
+	if GameState.can_upgrade_node(id):
+		GameState.upgrade_tree_node(id)
+	else:
+		_refresh()
+
+
+func _preview_upgrade_node(id: String, node_pos: Vector2 = Vector2.ZERO) -> void:
+	if _hover_upgrade_title == null or not Database.UPGRADE_TREE.has(id):
+		return
+	var d: Dictionary = Database.UPGRADE_TREE[id]
+	var title := "%s  Tier %d  Rank %d/%d" % [
+		d.name,
+		int(d.tier),
+		GameState.get_upgrade_node_rank(id),
+		int(d.max_ranks)
+	]
+	var description := "%s\n%s\n%s" % [_node_price_text(id), d.desc, _node_bonus_text(id)]
+	_hover_upgrade_title.text = title
+	_hover_upgrade_desc.text = description
+	if _node_hover_popup != null:
+		_node_hover_popup_title.text = title
+		_node_hover_popup_desc.text = description
+		_node_hover_popup.size = Vector2(260, 120)
+		var popup_pos := node_pos + Vector2(42, -42)
+		var parent := _node_hover_popup.get_parent() as Control
+		if parent != null:
+			var right_limit := parent.size.x - _node_hover_popup.size.x - 8.0
+			var bottom_limit := parent.size.y - _node_hover_popup.size.y - 8.0
+			if popup_pos.x > right_limit:
+				popup_pos.x = node_pos.x - _node_hover_popup.size.x - 42.0
+			popup_pos.x = clampf(popup_pos.x, 8.0, maxf(8.0, right_limit))
+			popup_pos.y = clampf(popup_pos.y, 8.0, maxf(8.0, bottom_limit))
+		_node_hover_popup.position = popup_pos
+		_node_hover_popup.visible = true
+
+
+func _clear_upgrade_preview(id: String) -> void:
+	_hide_node_hover_popup()
+	if _hover_upgrade_title == null or id == _selected_upgrade_node:
+		return
+	_hover_upgrade_title.text = "Selected: %s" % Database.UPGRADE_TREE[_selected_upgrade_node].name
+	_hover_upgrade_desc.text = "Click a node to pin its full upgrade details below."
+
+
+func _hide_node_hover_popup() -> void:
+	if _node_hover_popup != null:
+		_node_hover_popup.visible = false
+
+
+func _node_price_text(id: String) -> String:
+	if GameState.is_upgrade_node_path_locked(id):
+		return "Path locked"
+	if GameState.is_upgrade_node_common_locked(id):
+		return "Locked until chosen path is learned"
+	if GameState.is_upgrade_node_complete(id):
+		return "Complete"
+	return "Price: %d gold" % GameState.upgrade_node_cost(id)
+
+
 func _on_reset_upgrade_tree_pressed() -> void:
 	_selected_upgrade_node = "foundation"
 	GameState.reset_upgrade_tree()
+	_refresh()
+
+
+func _on_add_test_gold_pressed() -> void:
+	GameState.add_gold(10000)
+	GameState.save_game()
 	_refresh()
 
 
@@ -380,18 +561,14 @@ func _upgrade_node_positions() -> Dictionary:
 	var result := {}
 	var roots := _visible_upgrade_ids_in_tier(0)
 	for id in roots:
-		result[id] = Vector2(380.0, 485.0)
+		result[id] = Vector2(380.0, 1245.0)
 
 	var starters := _visible_upgrade_ids_in_tier(1)
 	var slots := _upgrade_starter_slots(starters.size())
 	for i in starters.size():
-		result[starters[i]] = Vector2(slots[i], 405.0)
+		result[starters[i]] = Vector2(slots[i], 1165.0)
 
-	for starter_id in starters:
-		var group := GameState.get_upgrade_reveal_group(starter_id)
-		if group.is_empty() or not result.has(starter_id):
-			continue
-		_add_group_positions(result, starter_id, group)
+	_add_all_group_positions(result)
 
 	for tier in [2, 3]:
 		var ids := _visible_upgrade_ids_in_tier(tier)
@@ -420,22 +597,38 @@ func _upgrade_starter_slots(count: int) -> Array[float]:
 			return [95.0, 285.0, 475.0, 665.0]
 
 
+func _add_all_group_positions(result: Dictionary) -> void:
+	var changed := true
+	while changed:
+		changed = false
+		for group_id_raw in GameState.upgrade_reveal_groups.keys():
+			var group_id := String(group_id_raw)
+			if not result.has(group_id):
+				continue
+			var before_count := result.size()
+			_add_group_positions(result, group_id, GameState.upgrade_reveal_groups[group_id])
+			if result.size() > before_count:
+				changed = true
+
+
 func _add_group_positions(result: Dictionary, starter_id: String, group: Dictionary) -> void:
 	var origin: Vector2 = result[starter_id]
 	var path_a: Array = group.get("path_a", [])
 	var path_b: Array = group.get("path_b", [])
 	var common := String(group.get("common", ""))
 	var lane_offset := 54.0
+	var first_step_y := origin.y - 95.0
+	var step_gap := 80.0
 	for i in path_a.size():
 		var id := String(path_a[i])
 		if GameState.is_upgrade_node_visible(id):
-			result[id] = Vector2(origin.x - lane_offset, 310.0 - float(i) * 80.0)
+			result[id] = Vector2(origin.x - lane_offset, first_step_y - float(i) * step_gap)
 	for i in path_b.size():
 		var id := String(path_b[i])
 		if GameState.is_upgrade_node_visible(id):
-			result[id] = Vector2(origin.x + lane_offset, 310.0 - float(i) * 80.0)
+			result[id] = Vector2(origin.x + lane_offset, first_step_y - float(i) * step_gap)
 	if common != "" and GameState.is_upgrade_node_visible(common):
-		result[common] = Vector2(origin.x, 115.0)
+		result[common] = Vector2(origin.x, origin.y - 290.0)
 
 
 func _visible_upgrade_ids_in_tier(tier: int) -> Array[String]:
@@ -452,14 +645,14 @@ func _visible_upgrade_ids_in_tier(tier: int) -> Array[String]:
 func _upgrade_tier_y(tier: int) -> float:
 	match tier:
 		0:
-			return 485.0
+			return 1245.0
 		1:
-			return 405.0
+			return 1165.0
 		2:
-			return 270.0
+			return 1065.0
 		3:
-			return 160.0
-	return 485.0
+			return 985.0
+	return 1245.0
 
 
 func _node_short_label(id: String) -> String:
@@ -580,9 +773,9 @@ func _node_color(id: String) -> Color:
 	if GameState.is_upgrade_node_common_locked(id):
 		return Color(0.20, 0.20, 0.28)
 	if GameState.is_upgrade_node_complete(id):
-		return Color(0.15, 0.48, 0.28)
+		return Color(0.82, 0.68, 0.12)
 	if GameState.can_upgrade_node(id):
-		return Color(0.28, 0.42, 0.9)
+		return Color(0.18, 0.58, 0.32)
 	return Color(0.26, 0.27, 0.36)
 
 
@@ -601,6 +794,21 @@ func _node_style(color: Color, highlighted: bool) -> StyleBoxFlat:
 	return style
 
 
+func _tooltip_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.08, 0.12, 1.0)
+	style.border_color = Color(0.62, 0.68, 0.9, 1.0)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	return style
+
+
 func _node_link_color(parent_id: String, child_id: String) -> Color:
 	if GameState.is_upgrade_node_path_locked(parent_id) or GameState.is_upgrade_node_path_locked(child_id):
 		return Color(0.24, 0.24, 0.30, 0.75)
@@ -609,7 +817,7 @@ func _node_link_color(parent_id: String, child_id: String) -> Color:
 	if GameState.is_upgrade_node_visible(child_id):
 		return Color(0.72, 0.75, 0.86, 0.85)
 	if GameState.is_upgrade_node_complete(parent_id):
-		return Color(0.38, 0.45, 0.75, 0.55)
+		return Color(0.78, 0.65, 0.18, 0.65)
 	return Color(0.17, 0.18, 0.25, 0.65)
 
 
@@ -643,7 +851,13 @@ func _rebuild_abilities() -> void:
 		box.add_child(name_lbl)
 
 		var desc := Label.new()
-		desc.text = d.desc
+		var display_level := lvl if unlocked else 1
+		desc.text = Database.ability_description(
+			id,
+			display_level,
+			GameState.ability_power_multiplier(),
+			GameState.ability_cooldown_multiplier()
+		)
 		desc.add_theme_font_size_override("font_size", 12)
 		desc.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -712,3 +926,218 @@ func _update_equipped_label() -> void:
 
 func _on_start_pressed() -> void:
 	go_to_dungeon.emit(GameState.selected_start_floor)
+
+
+func _build_player_stats_overlay() -> void:
+	_stats_overlay = ColorRect.new()
+	_stats_overlay.color = Color(0, 0, 0, 0.65)
+	_stats_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_stats_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_stats_overlay.visible = false
+	add_child(_stats_overlay)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stats_overlay.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(520, 560)
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 20)
+	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	panel.add_child(margin)
+
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 10)
+	margin.add_child(root)
+
+	var title := Label.new()
+	title.text = "HERO STATISTICS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	root.add_child(title)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(480, 420)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root.add_child(scroll)
+
+	_stats_content = VBoxContainer.new()
+	_stats_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_stats_content.add_theme_constant_override("separation", 4)
+	scroll.add_child(_stats_content)
+
+	var close_btn := Button.new()
+	close_btn.text = "Close"
+	close_btn.custom_minimum_size = Vector2(0, 40)
+	close_btn.pressed.connect(_hide_player_stats_panel)
+	root.add_child(close_btn)
+
+
+func _toggle_player_stats_panel() -> void:
+	if _stats_overlay.visible:
+		_hide_player_stats_panel()
+	else:
+		_show_player_stats_panel()
+
+
+func _show_player_stats_panel() -> void:
+	_refresh_player_stats_panel()
+	_stats_overlay.visible = true
+
+
+func _hide_player_stats_panel() -> void:
+	_stats_overlay.visible = false
+
+
+func _refresh_player_stats_panel() -> void:
+	for child in _stats_content.get_children():
+		child.queue_free()
+
+	_add_stats_section("Progress")
+	_add_stats_line("Gold", str(GameState.gold))
+	_add_stats_line("Emeralds", str(GameState.emeralds))
+	_add_stats_line("Deepest Floor", "%d / %d" % [GameState.deepest_floor, Database.MAX_FLOORS])
+	_add_stats_line("Highest Checkpoint", str(GameState.highest_checkpoint))
+
+	_add_stats_section("Core Stats")
+	var stat_ids := Database.STATS.keys()
+	stat_ids.sort_custom(func(a, b): return Database.STATS[a].order < Database.STATS[b].order)
+	for id in stat_ids:
+		var d: Dictionary = Database.STATS[id]
+		_add_stats_line(d.name, Database.format_stat(id, GameState.get_stat_value(id)))
+
+	_add_stats_section("Combat Modifiers")
+	_add_stats_line("Ability Power", "+%.0f%%" % ((GameState.ability_power_multiplier() - 1.0) * 100.0))
+	_add_stats_line("Ability Cooldown", "-%.0f%%" % ((1.0 - GameState.ability_cooldown_multiplier()) * 100.0))
+	var double_spell := GameState.double_spell_chance()
+	if double_spell > 0.0:
+		_add_stats_line("Double Spell", "%.0f%% chance to halve cooldown" % (double_spell * 100.0))
+	var recover_chance := GameState.recover_on_hit_chance()
+	if recover_chance > 0.0:
+		_add_stats_line("Recover on Hit", "%.0f%% chance to recover %.1fs cooldown" % [
+			recover_chance * 100.0, GameState.recover_on_hit_seconds()
+		])
+
+	_add_stats_section("Economy")
+	_add_stats_line("Gold Rewards", "x%.2f" % GameState.gold_reward_multiplier())
+	var upgrade_discount := GameState.upgrade_effect_value("upgrade_discount_by_rank")
+	if upgrade_discount > 0.0:
+		_add_stats_line("Upgrade Discount", "-%.0f%% gold skill costs" % (upgrade_discount * 100.0))
+	var emerald_bonus := GameState.upgrade_effect_value("emerald_chance_bonus_by_rank")
+	if emerald_bonus > 0.0:
+		_add_stats_line("Emerald Drop Chance", "+%.1f%%" % (emerald_bonus * 100.0))
+
+	_add_active_skill_sections()
+	_add_ability_section()
+
+
+func _add_stats_section(title: String) -> void:
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 8)
+	_stats_content.add_child(spacer)
+
+	var label := Label.new()
+	label.text = title
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_color", Color(0.65, 0.78, 1.0))
+	_stats_content.add_child(label)
+
+
+func _add_stats_line(name: String, value: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	_stats_content.add_child(row)
+
+	var name_lbl := Label.new()
+	name_lbl.text = name
+	name_lbl.custom_minimum_size = Vector2(190, 0)
+	name_lbl.add_theme_font_size_override("font_size", 13)
+	name_lbl.add_theme_color_override("font_color", Color(0.78, 0.78, 0.82))
+	row.add_child(name_lbl)
+
+	var value_lbl := Label.new()
+	value_lbl.text = value
+	value_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	value_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	value_lbl.add_theme_font_size_override("font_size", 13)
+	value_lbl.add_theme_color_override("font_color", Color(0.95, 0.95, 1.0))
+	row.add_child(value_lbl)
+
+
+func _add_active_skill_sections() -> void:
+	var active_ids: Array[String] = []
+	for node_id in GameState.upgrade_node_ranks.keys():
+		if GameState.get_upgrade_node_rank(String(node_id)) <= 0:
+			continue
+		if not Database.UPGRADE_TREE.has(node_id):
+			continue
+		active_ids.append(String(node_id))
+	active_ids.sort_custom(func(a, b):
+		var na: Dictionary = Database.UPGRADE_TREE[a]
+		var nb: Dictionary = Database.UPGRADE_TREE[b]
+		if int(na.tier) == int(nb.tier):
+			return int(na.order) < int(nb.order)
+		return int(na.tier) < int(nb.tier)
+	)
+
+	if active_ids.is_empty():
+		return
+
+	_add_stats_section("Active Skills")
+	for node_id in active_ids:
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		var rank := GameState.get_upgrade_node_rank(node_id)
+		var max_rank := int(node.max_ranks)
+		var detail := _active_skill_detail(node_id, node, rank)
+		_add_stats_line("%s (%d/%d)" % [node.name, rank, max_rank], detail)
+
+
+func _active_skill_detail(node_id: String, node: Dictionary, rank: int) -> String:
+	if node.has("effect_text"):
+		return String(node.effect_text)
+	if node.has("stat"):
+		return "+%s %s per rank" % [
+			Database.format_stat(String(node.stat), float(node.bonus_per_rank)),
+			Database.STATS[String(node.stat)].name
+		]
+	if node.has("gold_bonus_by_rank"):
+		var bonuses: Array = node["gold_bonus_by_rank"]
+		var index := clampi(rank, 1, bonuses.size()) - 1
+		return "+%.0f%% gold" % (float(bonuses[index]) * 100.0)
+	if node.has("chance_by_rank"):
+		var chances: Array = node["chance_by_rank"]
+		var index := clampi(rank, 1, chances.size()) - 1
+		return "%.0f%% chance" % (float(chances[index]) * 100.0)
+	if node.has("cooldown_reduction_per_rank"):
+		return "-%.0f%% ability cooldown per rank" % (float(node.cooldown_reduction_per_rank) * 100.0)
+	if node.has("ability_power_per_rank"):
+		return "+%.0f%% ability power per rank" % (float(node.ability_power_per_rank) * 100.0)
+	return String(node.get("desc", ""))
+
+
+func _add_ability_section() -> void:
+	_add_stats_section("Abilities")
+	var ids := Database.ABILITIES.keys()
+	ids.sort_custom(func(a, b): return Database.ABILITIES[a].order < Database.ABILITIES[b].order)
+	for id in ids:
+		var d: Dictionary = Database.ABILITIES[id]
+		if not GameState.is_unlocked(id):
+			_add_stats_line(d.name, "Locked")
+			continue
+		var lvl := GameState.get_ability_level(id)
+		var status := "Equipped" if GameState.is_equipped(id) else "Unlocked"
+		var detail := Database.ability_description(
+			id,
+			lvl,
+			GameState.ability_power_multiplier(),
+			GameState.ability_cooldown_multiplier()
+		)
+		_add_stats_line("%s Lv.%d" % [d.name, lvl], "%s — %s" % [status, detail])

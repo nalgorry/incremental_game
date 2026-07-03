@@ -19,12 +19,15 @@ func _clear_current() -> void:
 
 func show_town() -> void:
 	_clear_current()
+	var layer := CanvasLayer.new()
 	var town := Control.new()
 	town.set_script(TownScript)
 	town.set_anchors_preset(Control.PRESET_FULL_RECT)
+	town.set_offsets_preset(Control.PRESET_FULL_RECT)
 	town.go_to_dungeon.connect(_on_go_to_dungeon)
-	add_child(town)
-	_current = town
+	layer.add_child(town)
+	add_child(layer)
+	_current = layer
 
 
 func _on_go_to_dungeon(start_floor: int) -> void:

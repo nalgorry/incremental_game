@@ -828,8 +828,20 @@ func _on_basic_hit(target: CombatEntity, damage: float) -> void:
 		var next_target := _next_enemy_after(target)
 		if next_target != null:
 			var chain_damage := damage * maxf(0.1, GameState.upgrade_effect_value("chain_strike_damage_multiplier_by_rank"))
-			next_target.take_damage(chain_damage)
-			_spawn_text(next_target.position, str(int(round(chain_damage))), Color(0.6, 0.85, 1.0), false)
+			_fire_projectile(
+				target.position,
+				next_target,
+				Color(0.6, 0.85, 1.0),
+				chain_damage,
+				false,
+				5.0,
+				9.0,
+				1400.0,
+				0.35,
+				Color(0.6, 0.85, 1.0),
+				false,
+				"chain"
+			)
 
 
 func _next_enemy_after(source: CombatEntity) -> CombatEntity:

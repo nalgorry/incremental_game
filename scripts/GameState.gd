@@ -135,7 +135,7 @@ func upgrade_tree_node(id: String) -> bool:
 	upgrade_node_ranks[id] = old_rank + 1
 	if old_rank == 0:
 		_choose_upgrade_reveal_path(id)
-		if not upgrade_node_groups.has(id):
+		if _should_reveal_after_learning(id):
 			_reveal_next_upgrade_nodes(id)
 	currencies_changed.emit()
 	save_game()
@@ -157,7 +157,10 @@ func _reveal_next_upgrade_nodes(source_id: String) -> void:
 		_reveal_one_upgrade_per_category(source_id, next_tier)
 		return
 	if int(source.tier) == 1:
-		_reveal_upgrade_path_group(source_id)
+		_reveal_upgrade_path_group(source_id, 1)
+		return
+	if _is_upgrade_group_common_node(source_id):
+		_reveal_upgrade_path_group(source_id, _next_reveal_stage(source_id))
 		return
 	var source_category := String(source.get("category", ""))
 	var candidates: Array[String] = []
@@ -172,28 +175,32 @@ func _reveal_next_upgrade_nodes(source_id: String) -> void:
 		visible_upgrade_nodes.append(revealed_id)
 		visible_upgrade_parents[revealed_id] = source_id
 
-func _reveal_upgrade_path_group(source_id: String) -> void:
+func _should_reveal_after_learning(id: String) -> bool:
+	if not upgrade_node_groups.has(id):
+		return true
+	return _is_upgrade_group_common_node(id)
+
+func _is_upgrade_group_common_node(id: String) -> bool:
+	if not upgrade_node_groups.has(id):
+		return false
+	var info: Dictionary = upgrade_node_groups[id]
+	return String(info.get("path", "")) == "common"
+
+func _reveal_upgrade_path_group(source_id: String, stage: int) -> void:
 	if upgrade_reveal_groups.has(source_id):
 		return
 	var source: Dictionary = Database.UPGRADE_TREE[source_id]
 	var category := String(source.get("category", ""))
-	var candidates: Array[String] = []
-	for node_id_raw in Database.UPGRADE_TREE.keys():
-		var node_id := String(node_id_raw)
-		var node: Dictionary = Database.UPGRADE_TREE[node_id]
-		if node_id == source_id or bool(node.get("branch_start", false)):
-			continue
-		if String(node.get("category", "")) == category and int(node.get("tier", 0)) == 2 and not is_upgrade_node_visible(node_id):
-			candidates.append(node_id)
-	candidates.shuffle()
-	var path_a := _take_upgrade_candidates(candidates, 2)
-	var path_b := _take_upgrade_candidates(candidates, 2)
+	var path_a: Array[String] = []
+	var path_b: Array[String] = []
 	var common := ""
-	if not candidates.is_empty():
-		common = candidates.pop_front()
+	path_a = _take_stage_candidates(category, source_id, stage, 2)
+	path_b = _take_stage_candidates(category, source_id, stage, 2, path_a)
+	common = _take_stage_candidate(category, source_id, stage, path_a + path_b)
 	var group := {
 		"source": source_id,
 		"category": category,
+		"stage": stage,
 		"path_a": path_a,
 		"path_b": path_b,
 		"common": common,
@@ -201,6 +208,81 @@ func _reveal_upgrade_path_group(source_id: String) -> void:
 	}
 	upgrade_reveal_groups[source_id] = group
 	_register_upgrade_reveal_group(source_id, group)
+
+func _next_reveal_stage(source_id: String) -> int:
+	if not upgrade_node_groups.has(source_id):
+		return 1
+	var info: Dictionary = upgrade_node_groups[source_id]
+	var parent_group_id := String(info.get("group", ""))
+	if not upgrade_reveal_groups.has(parent_group_id):
+		return 1
+	var parent_group: Dictionary = upgrade_reveal_groups[parent_group_id]
+	return mini(int(parent_group.get("stage", 1)) + 1, 5)
+
+func _upgrade_candidates_for_tier(category: String, source_id: String, tier: int, excluded: Array = []) -> Array[String]:
+	var candidates: Array[String] = []
+	for node_id_raw in Database.UPGRADE_TREE.keys():
+		var node_id := String(node_id_raw)
+		var node: Dictionary = Database.UPGRADE_TREE[node_id]
+		if node_id == source_id or bool(node.get("branch_start", false)) or excluded.has(node_id):
+			continue
+		if String(node.get("category", "")) == category and int(node.get("tier", 0)) == tier and not is_upgrade_node_visible(node_id):
+			candidates.append(node_id)
+	candidates.shuffle()
+	return candidates
+
+func _take_stage_candidates(category: String, source_id: String, stage: int, count: int, excluded: Array = []) -> Array[String]:
+	var result: Array[String] = []
+	for i in count:
+		var next_id := _take_stage_candidate(category, source_id, stage, excluded + result)
+		if next_id == "":
+			break
+		result.append(next_id)
+	return result
+
+func _take_stage_candidate(category: String, source_id: String, stage: int, excluded: Array = []) -> String:
+	var tiers := _weighted_stage_tiers(stage)
+	for tier in tiers:
+		var candidates := _upgrade_candidates_for_tier(category, source_id, tier, excluded)
+		if not candidates.is_empty():
+			return candidates[0]
+	return ""
+
+func _weighted_stage_tiers(stage: int) -> Array[int]:
+	var weights := _stage_tier_weights(stage)
+	var result: Array[int] = []
+	var first_tier := _roll_weighted_tier(weights)
+	if first_tier > 0:
+		result.append(first_tier)
+	var keys := weights.keys()
+	keys.sort()
+	for key in keys:
+		var tier := int(String(key))
+		if not result.has(tier):
+			result.append(tier)
+	return result
+
+func _stage_tier_weights(stage: int) -> Dictionary:
+	var stage_key := "stage_%d" % clampi(stage, 1, 5)
+	if Database.UPGRADE_TREE_STAGES.has(stage_key):
+		var stage_data: Dictionary = Database.UPGRADE_TREE_STAGES[stage_key]
+		if stage_data.has("tier_weights"):
+			return stage_data.tier_weights
+	return {"2": 1.0}
+
+func _roll_weighted_tier(weights: Dictionary) -> int:
+	var total := 0.0
+	for weight in weights.values():
+		total += maxf(0.0, float(weight))
+	if total <= 0.0:
+		return 0
+	var roll := randf() * total
+	var running := 0.0
+	for key in weights.keys():
+		running += maxf(0.0, float(weights[key]))
+		if roll <= running:
+			return int(String(key))
+	return int(String(weights.keys()[0]))
 
 func _take_upgrade_candidates(candidates: Array[String], count: int) -> Array[String]:
 	var result: Array[String] = []
