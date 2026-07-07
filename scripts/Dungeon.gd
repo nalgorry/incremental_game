@@ -545,6 +545,13 @@ func _build_ui() -> void:
 	_gold_label = _make_hud_label(right, 20, Color(1, 0.85, 0.2))
 	_emerald_label = _make_hud_label(right, 20, Color(0.4, 0.9, 0.4))
 
+	var retreat_btn := Button.new()
+	retreat_btn.text = "Retreat"
+	retreat_btn.add_theme_font_size_override("font_size", 16)
+	retreat_btn.custom_minimum_size = Vector2(90, 34)
+	retreat_btn.pressed.connect(_on_flee_pressed)
+	right.add_child(retreat_btn)
+
 	# Hero HP label.
 	_hp_label = Label.new()
 	_hp_label.add_theme_font_size_override("font_size", 18)

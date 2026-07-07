@@ -59,18 +59,6 @@
     "costs": [35],
     "parents": ["foundation"]
   },
-  "blade_training": {
-    "name": "Increase Attack",
-    "order": 20,
-    "tier": 2,
-    "category": "Attack",
-    "desc": "Increase basic attack damage.",
-    "stat": "attack",
-    "bonus_per_rank": 4.0,
-    "max_ranks": 3,
-    "costs": [35, 60, 85],
-    "parents": ["basic_attack_update"]
-  },
   "quick_casting": {
     "name": "Increase Attack Speed",
     "order": 21,
@@ -96,11 +84,11 @@
     "parents": ["basic_heal_update"]
   },
   "basic_regen": {
-    "name": "Basic Regen",
+    "name": "Increase Healing",
     "order": 23,
     "tier": 2,
     "category": "Defence",
-    "desc": "Regenerate HP over time.",
+    "desc": "Increase passive healing and recovery.",
     "stat": "hp_regen",
     "bonus_per_rank": 1.0,
     "max_ranks": 3,
@@ -120,22 +108,22 @@
     "parents": ["basic_heal_update"]
   },
   "basic_haste": {
-    "name": "Basic Haste",
+    "name": "Increase Ability Speed",
     "order": 25,
     "tier": 2,
     "category": "Ability Update",
-    "desc": "Faster abilities.",
+    "desc": "Reduce ability cooldowns.",
     "cooldown_reduction_per_rank": 0.02,
     "max_ranks": 3,
     "costs": [150, 175, 200],
     "parents": ["basic_ability_update"]
   },
   "ability_update": {
-    "name": "Ability Update",
+    "name": "Increase Ability Damage",
     "order": 26,
     "tier": 2,
     "category": "Ability Update",
-    "desc": "More powerful abilities.",
+    "desc": "Increase ability power.",
     "ability_power_per_rank": 0.02,
     "max_ranks": 3,
     "costs": [200, 225, 250],
@@ -177,15 +165,15 @@
     "parents": ["basic_attack_update"]
   },
   "steady_training": {
-    "name": "Increase Basic Damage",
+    "name": "Increase Attack",
     "order": 30,
     "tier": 2,
     "category": "Attack",
-    "desc": "Add a small amount of reliable attack power.",
+    "desc": "Increase base attack power.",
     "stat": "attack",
-    "bonus_per_rank": 2.0,
+    "bonus_per_rank": 3.0,
     "max_ranks": 3,
-    "costs": [65, 95, 125],
+    "costs": [40, 65, 90],
     "parents": ["basic_attack_update"]
   },
   "shield_training": {
@@ -199,40 +187,6 @@
     "costs": [90, 125, 160],
     "parents": ["basic_heal_update"]
   },
-  "healing_practice": {
-    "name": "Increase Healing",
-    "order": 32,
-    "tier": 2,
-    "category": "Defence",
-    "desc": "Increase passive healing and recovery.",
-    "stat": "hp_regen",
-    "bonus_per_rank": 0.5,
-    "max_ranks": 3,
-    "costs": [80, 110, 140],
-    "parents": ["basic_heal_update"]
-  },
-  "spell_power_training": {
-    "name": "Increase Ability Damage",
-    "order": 33,
-    "tier": 2,
-    "category": "Ability Update",
-    "desc": "Increase ability power.",
-    "ability_power_per_rank": 0.01,
-    "max_ranks": 3,
-    "costs": [100, 135, 170],
-    "parents": ["basic_ability_update"]
-  },
-  "cooldown_training": {
-    "name": "Increase Ability Speed",
-    "order": 34,
-    "tier": 2,
-    "category": "Ability Update",
-    "desc": "Reduce ability cooldowns.",
-    "cooldown_reduction_per_rank": 0.01,
-    "max_ranks": 3,
-    "costs": [100, 135, 170],
-    "parents": ["basic_ability_update"]
-  },
   "first_spell_training": {
     "name": "Increase First Cast",
     "order": 35,
@@ -244,15 +198,15 @@
     "costs": [120, 155, 190],
     "parents": ["basic_ability_update"]
   },
-  "simple_spell_recovery": {
-    "name": "Increase Cooldown Recovery",
-    "order": 36,
+  "spell_power_training": {
+    "name": "Increase Spell Power",
+    "order": 33,
     "tier": 2,
     "category": "Ability Update",
-    "desc": "Recover a small amount of cooldown when abilities are used.",
-    "arcane_flow_recover_by_rank": [0.10, 0.15, 0.20],
+    "desc": "Increase all ability power.",
+    "ability_power_per_rank": 0.015,
     "max_ranks": 3,
-    "costs": [130, 165, 200],
+    "costs": [110, 145, 180],
     "parents": ["basic_ability_update"]
   },
   "gold_drop": {
@@ -309,14 +263,14 @@
     "bonus_per_rank": 8.0,
     "max_ranks": 3,
     "costs": [140, 175, 210],
-    "parents": ["blade_training"]
+    "parents": ["steady_training"]
   },
   "swift_casting": {
-    "name": "Swift Casting",
+    "name": "Battle Rhythm",
     "order": 31,
     "tier": 3,
     "category": "Attack",
-    "desc": "Move and cast with greater rhythm.",
+    "desc": "Blend speed and power.",
     "stat": "attack_speed",
     "bonus_per_rank": 0.14,
     "max_ranks": 2,
@@ -333,19 +287,7 @@
     "bonus_per_rank": 0.15,
     "max_ranks": 3,
     "costs": [220, 245, 270],
-    "parents": ["blade_training"]
-  },
-  "battle_rhythm": {
-    "name": "Battle Rhythm",
-    "order": 33,
-    "tier": 3,
-    "category": "Attack",
-    "desc": "Blend speed and power.",
-    "stat": "attack_speed",
-    "bonus_per_rank": 0.12,
-    "max_ranks": 2,
-    "costs": [240, 265],
-    "parents": ["quick_casting", "blade_training"]
+    "parents": ["steady_training"]
   },
   "reinforced_skin": {
     "name": "Reinforced Skin",

@@ -121,6 +121,15 @@ Key knobs live in `Database.gd`:
 
 ---
 
+## Credits
+
+Skill tree icons by various artists from [Game-Icons.net](https://game-icons.net/),
+licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+Contributors include Lorc, Delapouite, sbed, Skoll, Willdabeast, Zeromancer,
+DarkZaitzev, and PriorBlue.
+
+---
+
 ## MVP scope
 
 **Included:** auto-combat, 100 floors with waves & bosses, checkpoints, two
