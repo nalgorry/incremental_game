@@ -42,6 +42,8 @@ var highest_checkpoint: int = 0
 var deepest_floor: int = 0
 # Floor the next run should begin on.
 var selected_start_floor: int = 1
+# How many times the player has entered the dungeon.
+var dungeon_runs: int = 0
 
 
 var _instance_counter: int = 0
@@ -639,6 +641,12 @@ func register_floor_cleared(floor_num: int) -> void:
 	save_game()
 
 
+func register_dungeon_run() -> void:
+	dungeon_runs += 1
+	progress_changed.emit()
+	save_game()
+
+
 # --- Save / load -----------------------------------------------------------
 func to_dict() -> Dictionary:
 	return {
@@ -655,6 +663,7 @@ func to_dict() -> Dictionary:
 		"highest_checkpoint": highest_checkpoint,
 		"deepest_floor": deepest_floor,
 		"selected_start_floor": selected_start_floor,
+		"dungeon_runs": dungeon_runs,
 		"instance_counter": _instance_counter,
 	}
 
@@ -697,6 +706,7 @@ func load_game() -> void:
 	highest_checkpoint = int(data.get("highest_checkpoint", 0))
 	deepest_floor = int(data.get("deepest_floor", 0))
 	selected_start_floor = int(data.get("selected_start_floor", 1))
+	dungeon_runs = int(data.get("dungeon_runs", 0))
 	_instance_counter = int(data.get("instance_counter", 0))
 	_ensure_starter_ability()
 	_ensure_upgrade_tree_visibility()
@@ -715,6 +725,8 @@ func _new_game_defaults() -> void:
 	highest_checkpoint = 0
 	deepest_floor = 0
 	selected_start_floor = 1
+	dungeon_runs = 0
+	_instance_counter = 0
 	_ensure_starter_ability()
 	_ensure_upgrade_tree_visibility()
 	save_game()

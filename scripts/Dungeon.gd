@@ -41,6 +41,11 @@ var rampage_bonus: float = 0.0
 var run_gold: int = 0
 var run_emeralds: int = 0
 
+# DPS tracking (damage dealt by the hero).
+var _combat_elapsed: float = 0.0
+var _basic_damage_total: float = 0.0
+var _ability_damage_by_id: Dictionary = {}  # ability_id -> float
+
 # HUD nodes.
 var _ui: Control
 var _floor_label: Label
@@ -49,6 +54,9 @@ var _gold_label: Label
 var _emerald_label: Label
 var _hp_label: Label
 var _ability_hud: VBoxContainer
+var _basic_dps_label: Label
+var _ability_dps_box: VBoxContainer
+var _ability_dps_labels: Dictionary = {}  # ability_id -> Label
 var _end_overlay: ColorRect
 var _end_panel: PanelContainer
 var _end_label: Label
@@ -62,10 +70,15 @@ func begin_run(start_floor: int) -> void:
 	hero_shield = 0.0
 	last_stand_used = false
 	basic_attack_count = 0
+	_combat_elapsed = 0.0
+	_basic_damage_total = 0.0
+	_ability_damage_by_id = {}
+	_ability_dps_labels = {}
 	_build_environment()
 	_build_ui()
 	_spawn_hero()
 	_build_abilities()
+	_build_ability_dps_labels()
 	_start_floor()
 	running = true
 
@@ -234,6 +247,7 @@ func _process(delta: float) -> void:
 	_update_buff(delta)
 	_update_rampage(delta)
 	floor_elapsed += delta
+	_combat_elapsed += delta
 	_update_hp_regen(delta)
 	_hero_attack(delta)
 	_cast_abilities(delta)
@@ -564,6 +578,17 @@ func _build_ui() -> void:
 	_ability_hud.position = Vector2(20, 500)
 	_ui.add_child(_ability_hud)
 
+	# DPS tracker (top-left, under floor/wave).
+	var dps_box := VBoxContainer.new()
+	dps_box.position = Vector2(20, 52)
+	dps_box.add_theme_constant_override("separation", 2)
+	_ui.add_child(dps_box)
+	_basic_dps_label = _make_hud_label(dps_box, 16, Color(0.65, 0.85, 1.0))
+	_basic_dps_label.text = "Basic DPS: 0"
+	_ability_dps_box = VBoxContainer.new()
+	_ability_dps_box.add_theme_constant_override("separation", 2)
+	dps_box.add_child(_ability_dps_box)
+
 	# End-of-run modal overlay (dims screen, centers the panel, blocks clicks).
 	_end_overlay = ColorRect.new()
 	_end_overlay.color = Color(0, 0, 0, 0.65)
@@ -617,14 +642,51 @@ func _update_hud() -> void:
 	_floor_label.text = "Floor %d / %d" % [floor_num, Database.MAX_FLOORS]
 	var total_waves := waves.size()
 	_wave_label.text = "Wave %d / %d" % [mini(wave_index + 1, total_waves), total_waves]
-	_gold_label.text = "Gold: %d" % GameState.gold
-	_emerald_label.text = "Emeralds: %d" % GameState.emeralds
+	_gold_label.text = "Gold: +%d" % run_gold
+	_emerald_label.text = "Emeralds: +%d" % run_emeralds
 	if hero != null:
 		var shield_text := ""
 		if hero_shield > 0.0:
 			shield_text = "   Shield: %d" % int(ceil(hero_shield))
 		_hp_label.text = "HP: %d / %d%s" % [int(ceil(hero.hp)), int(round(hero.max_hp)), shield_text]
+	_update_dps_hud()
 	_update_ability_hud()
+
+
+func _update_dps_hud() -> void:
+	var t := maxf(_combat_elapsed, 0.001)
+	_basic_dps_label.text = "Basic DPS: %d" % int(round(_basic_damage_total / t))
+	for ability_id in _ability_dps_labels.keys():
+		var lbl: Label = _ability_dps_labels[ability_id]
+		var total := float(_ability_damage_by_id.get(ability_id, 0.0))
+		var d: Dictionary = Database.ABILITIES[ability_id]
+		lbl.text = "%s DPS: %d" % [d.name, int(round(total / t))]
+
+
+func _build_ability_dps_labels() -> void:
+	for child in _ability_dps_box.get_children():
+		child.queue_free()
+	_ability_dps_labels.clear()
+	for ab in _abilities:
+		var id: String = ab.id
+		_ability_damage_by_id[id] = float(_ability_damage_by_id.get(id, 0.0))
+		var d: Dictionary = Database.ABILITIES[id]
+		var color: Color = d.get("color", Color(1.0, 0.55, 0.35))
+		var lbl := _make_hud_label(_ability_dps_box, 16, color)
+		lbl.text = "%s DPS: 0" % d.name
+		_ability_dps_labels[id] = lbl
+
+
+func _record_damage(source_type: String, amount: float, ability_id: String = "") -> void:
+	if amount <= 0.0:
+		return
+	match source_type:
+		"basic", "chain":
+			_basic_damage_total += amount
+		"ability":
+			if ability_id == "":
+				return
+			_ability_damage_by_id[ability_id] = float(_ability_damage_by_id.get(ability_id, 0.0)) + amount
 
 
 func _update_ability_hud() -> void:
@@ -701,6 +763,7 @@ func _meteor_impact(impact_pos: Vector2, damage: float, color: Color, ability_id
 		if is_instance_valid(e) and e.alive:
 			var actual_damage := damage * _ability_target_damage_multiplier(e)
 			e.take_damage(actual_damage)
+			_record_damage("ability", actual_damage, ability_id)
 			if not e.alive and ability_id != "":
 				_on_ability_kill(ability_id)
 			_spawn_text(e.position, str(int(round(actual_damage))), color, true)
@@ -741,6 +804,7 @@ func _fire_projectile(
 	ball.add_child(core)
 
 	var dist := start.distance_to(target_pos)
+	speed *= 0.64  # hero and enemy projectiles
 	var dur := clampf(dist / speed, 0.08, max_duration)
 	var tween := create_tween()
 	tween.tween_property(ball, "position", target_pos, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
@@ -748,6 +812,8 @@ func _fire_projectile(
 		if is_instance_valid(target) and target.alive:
 			var hp_damage := _apply_projectile_damage(target, damage, source_entity)
 			if hp_damage > 0.0:
+				if target != hero:
+					_record_damage(source_type, hp_damage, source_id)
 				_spawn_text(target.position, str(int(round(hp_damage))),
 					Color(1, 1, 0.4) if is_crit else impact_text_color,
 					is_crit or impact_text_big)

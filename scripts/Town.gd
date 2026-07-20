@@ -22,6 +22,7 @@ var _stats_overlay: ColorRect
 var _stats_content: VBoxContainer
 var _upgrade_graph: Control
 var _reset_confirm_overlay: ColorRect
+var _new_game_confirm_overlay: ColorRect
 
 
 func _ready() -> void:
@@ -106,6 +107,17 @@ func _build_ui() -> void:
 	reset_btn.pressed.connect(_show_reset_confirm)
 	header.add_child(reset_btn)
 
+	var new_game_gap := Control.new()
+	new_game_gap.custom_minimum_size = Vector2(20, 0)
+	header.add_child(new_game_gap)
+
+	var new_game_btn := Button.new()
+	new_game_btn.text = "New Game"
+	new_game_btn.add_theme_color_override("font_color", Color(0.95, 0.4, 0.4))
+	new_game_btn.tooltip_text = "Wipe all progress and start from scratch."
+	new_game_btn.pressed.connect(_show_new_game_confirm)
+	header.add_child(new_game_btn)
+
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(spacer)
@@ -122,6 +134,7 @@ func _build_ui() -> void:
 	_build_run_column(run_col)
 	_build_player_stats_overlay()
 	_build_reset_confirm_overlay()
+	_build_new_game_confirm_overlay()
 
 
 func _make_column(parent: Control, title_text: String, stretch: float) -> VBoxContainer:
@@ -193,8 +206,8 @@ func _refresh() -> void:
 	_emerald_label.text = "Emeralds: %d" % GameState.emeralds
 	_gold_label.reset_size()
 	_emerald_label.reset_size()
-	_progress_label.text = "Deepest floor: %d / %d\nHighest checkpoint: %d" % [
-		GameState.deepest_floor, Database.MAX_FLOORS, GameState.highest_checkpoint
+	_progress_label.text = "Deepest floor: %d / %d\nHighest checkpoint: %d\nDungeon runs: %d" % [
+		GameState.deepest_floor, Database.MAX_FLOORS, GameState.highest_checkpoint, GameState.dungeon_runs
 	]
 	_rebuild_stats()
 	_rebuild_abilities()
@@ -1000,6 +1013,7 @@ func _refresh_player_stats_panel() -> void:
 	_add_stats_line("Gold", str(GameState.gold))
 	_add_stats_line("Emeralds", str(GameState.emeralds))
 	_add_stats_line("Deepest Floor", "%d / %d" % [GameState.deepest_floor, Database.MAX_FLOORS])
+	_add_stats_line("Dungeon Runs", str(GameState.dungeon_runs))
 	_add_stats_line("Highest Checkpoint", str(GameState.highest_checkpoint))
 
 	_add_stats_section("Core Stats")
@@ -1231,3 +1245,78 @@ func _rebuild_upgrade_graph() -> void:
 	for child in _upgrade_graph.get_children():
 		child.queue_free()
 	_build_upgrade_tree_graph(_upgrade_graph)
+
+
+func _build_new_game_confirm_overlay() -> void:
+	_new_game_confirm_overlay = ColorRect.new()
+	_new_game_confirm_overlay.color = Color(0, 0, 0, 0.75)
+	_new_game_confirm_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_new_game_confirm_overlay.visible = false
+	_new_game_confirm_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_new_game_confirm_overlay)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_new_game_confirm_overlay.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(440, 0)
+	center.add_child(panel)
+
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 16)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	margin.add_child(root)
+	panel.add_child(margin)
+
+	var title := Label.new()
+	title.text = "Start New Game?"
+	title.add_theme_font_size_override("font_size", 24)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(title)
+
+	var desc := Label.new()
+	desc.text = "This deletes all progress: gold, emeralds, skills, abilities, and floors. You will start from scratch. This cannot be undone."
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.add_theme_font_size_override("font_size", 16)
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(desc)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 16)
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	root.add_child(btn_row)
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "Cancel"
+	cancel_btn.custom_minimum_size = Vector2(120, 40)
+	cancel_btn.pressed.connect(_hide_new_game_confirm)
+	btn_row.add_child(cancel_btn)
+
+	var confirm_btn := Button.new()
+	confirm_btn.text = "New Game"
+	confirm_btn.custom_minimum_size = Vector2(140, 40)
+	confirm_btn.add_theme_color_override("font_color", Color(0.95, 0.4, 0.4))
+	confirm_btn.pressed.connect(_confirm_new_game)
+	btn_row.add_child(confirm_btn)
+
+
+func _show_new_game_confirm() -> void:
+	_new_game_confirm_overlay.visible = true
+
+
+func _hide_new_game_confirm() -> void:
+	_new_game_confirm_overlay.visible = false
+
+
+func _confirm_new_game() -> void:
+	_hide_new_game_confirm()
+	_hide_player_stats_panel()
+	_selected_upgrade_node = "foundation"
+	GameState.reset_progress()
+	_refresh()
+	_scroll_upgrade_tree_to_bottom.call_deferred()

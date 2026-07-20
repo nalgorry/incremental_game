@@ -35,6 +35,7 @@ func _on_go_to_dungeon(start_floor: int) -> void:
 
 
 func show_dungeon(start_floor: int) -> void:
+	GameState.register_dungeon_run()
 	_clear_current()
 	var dungeon := Node2D.new()
 	dungeon.set_script(DungeonScript)
