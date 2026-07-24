@@ -235,26 +235,30 @@ func _rebuild_stats() -> void:
 	hint.add_theme_color_override("font_color", Color(0.55, 0.65, 0.9))
 	_stats_list.add_child(hint)
 
+	var test_row := HBoxContainer.new()
+	test_row.add_theme_constant_override("separation", 8)
+	_stats_list.add_child(test_row)
+
 	var reset_btn := Button.new()
 	reset_btn.text = "Reset Tree (Testing)"
 	reset_btn.tooltip_text = "Clears only hero upgrade tree ranks and revealed nodes."
 	reset_btn.pressed.connect(_on_reset_upgrade_tree_pressed)
-	_stats_list.add_child(reset_btn)
+	test_row.add_child(reset_btn)
 
 	var gold_test_btn := Button.new()
 	gold_test_btn.text = "+10,000 Gold (Testing)"
 	gold_test_btn.tooltip_text = "Adds 10,000 gold for testing upgrades."
 	gold_test_btn.pressed.connect(_on_add_test_gold_pressed)
-	_stats_list.add_child(gold_test_btn)
+	test_row.add_child(gold_test_btn)
 
 	var emerald_test_btn := Button.new()
 	emerald_test_btn.text = "+100 Emeralds (Testing)"
 	emerald_test_btn.tooltip_text = "Adds 100 emeralds for testing abilities."
 	emerald_test_btn.pressed.connect(_on_add_test_emeralds_pressed)
-	_stats_list.add_child(emerald_test_btn)
+	test_row.add_child(emerald_test_btn)
 
 	_upgrade_graph = Control.new()
-	_upgrade_graph.custom_minimum_size = Vector2(760, 1300)
+	_upgrade_graph.custom_minimum_size = Vector2(720, 1800)
 	_upgrade_graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_stats_list.add_child(_upgrade_graph)
 	_build_upgrade_tree_graph(_upgrade_graph)
@@ -271,7 +275,7 @@ func _scroll_upgrade_tree_to_bottom() -> void:
 
 
 func _build_upgrade_tree_graph(graph: Control) -> void:
-	var positions := _upgrade_node_positions()
+	var positions := _normalize_upgrade_positions(_upgrade_node_positions(), graph)
 	var ids: Array = GameState.visible_upgrade_nodes.duplicate()
 	ids.sort_custom(func(a, b): return GameState.skill_data(a).get("order", 0) < GameState.skill_data(b).get("order", 0))
 	_build_node_hover_popup(graph)
@@ -316,7 +320,7 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		_add_skill_icon(btn, id, path_locked)
 
 		var rank_label := Label.new()
-		rank_label.text = "LOCK" if path_locked else ("%d/%d" % [GameState.get_upgrade_node_rank(id), int(d.max_ranks)] if visible else "LOCK")
+		rank_label.text = "LOCK" if path_locked else ("%d/%d" % [GameState.get_upgrade_node_rank(id), int(d.max_ranks)])
 		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		rank_label.add_theme_font_size_override("font_size", 10)
 		rank_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.65) if path_locked else (Color(0.95, 0.88, 0.45) if complete else Color(0.75, 0.75, 0.85)))
@@ -594,12 +598,12 @@ func _upgrade_node_positions() -> Dictionary:
 	var result := {}
 	var roots := _visible_upgrade_ids_in_tier(0)
 	for id in roots:
-		result[id] = Vector2(380.0, 1245.0)
+		result[id] = Vector2(360.0, 2400.0)
 
 	var starters := _visible_upgrade_ids_in_tier(1)
 	var slots := _upgrade_starter_slots(starters.size())
 	for i in starters.size():
-		result[starters[i]] = Vector2(slots[i], 1165.0)
+		result[starters[i]] = Vector2(slots[i], 2240.0)
 
 	_add_all_group_positions(result)
 
@@ -610,10 +614,44 @@ func _upgrade_node_positions() -> Dictionary:
 				continue
 			var parent := GameState.get_upgrade_reveal_parent(id)
 			if parent != "" and result.has(parent):
-				result[id] = Vector2(result[parent].x, _upgrade_tier_y(tier))
+				result[id] = Vector2(result[parent].x, result[parent].y - 140.0)
 			else:
-				result[id] = Vector2(380.0, _upgrade_tier_y(tier))
+				result[id] = Vector2(360.0, _upgrade_tier_y(tier))
 	return result
+
+
+func _normalize_upgrade_positions(positions: Dictionary, graph: Control) -> Dictionary:
+	if positions.is_empty():
+		graph.custom_minimum_size = Vector2(720, 1800)
+		return positions
+	var min_x := INF
+	var max_x := -INF
+	var min_y := INF
+	var max_y := -INF
+	for pos_raw in positions.values():
+		var pos: Vector2 = pos_raw
+		min_x = minf(min_x, pos.x)
+		max_x = maxf(max_x, pos.x)
+		min_y = minf(min_y, pos.y)
+		max_y = maxf(max_y, pos.y)
+	var pad_x := 50.0
+	var pad_y := 80.0
+	var content_w := maxf(1.0, max_x - min_x)
+	var content_h := maxf(1.0, max_y - min_y)
+	var avail_w := 720.0
+	var scale_x := 1.0
+	if content_w + pad_x * 2.0 > avail_w:
+		scale_x = (avail_w - pad_x * 2.0) / content_w
+	var normalized := {}
+	for id in positions.keys():
+		var p: Vector2 = positions[id]
+		normalized[id] = Vector2(
+			pad_x + (p.x - min_x) * scale_x,
+			pad_y + (p.y - min_y)
+		)
+	var height := maxf(1800.0, content_h + pad_y * 2.0 + 50.0)
+	graph.custom_minimum_size = Vector2(avail_w, height)
+	return normalized
 
 
 func _upgrade_starter_slots(count: int) -> Array[float]:
@@ -621,13 +659,13 @@ func _upgrade_starter_slots(count: int) -> Array[float]:
 		0:
 			return []
 		1:
-			return [380.0]
+			return [360.0]
 		2:
-			return [250.0, 510.0]
+			return [220.0, 500.0]
 		3:
-			return [170.0, 380.0, 590.0]
+			return [140.0, 360.0, 580.0]
 		_:
-			return [95.0, 285.0, 475.0, 665.0]
+			return [90.0, 270.0, 450.0, 630.0]
 
 
 func _add_all_group_positions(result: Dictionary) -> void:
@@ -649,9 +687,10 @@ func _add_group_positions(result: Dictionary, starter_id: String, group: Diction
 	var path_a: Array = group.get("path_a", [])
 	var path_b: Array = group.get("path_b", [])
 	var common := String(group.get("common", ""))
-	var lane_offset := 54.0
-	var first_step_y := origin.y - 95.0
-	var step_gap := 80.0
+	# Narrow lanes so adjacent category columns do not collide.
+	var lane_offset := 48.0
+	var first_step_y := origin.y - 130.0
+	var step_gap := 120.0
 	for i in path_a.size():
 		var id := String(path_a[i])
 		if GameState.is_upgrade_node_visible(id):
@@ -661,7 +700,9 @@ func _add_group_positions(result: Dictionary, starter_id: String, group: Diction
 		if GameState.is_upgrade_node_visible(id):
 			result[id] = Vector2(origin.x + lane_offset, first_step_y - float(i) * step_gap)
 	if common != "" and GameState.is_upgrade_node_visible(common):
-		result[common] = Vector2(origin.x, origin.y - 290.0)
+		var path_steps := maxi(path_a.size(), path_b.size())
+		var common_y := first_step_y - float(maxi(path_steps - 1, 0)) * step_gap - 140.0
+		result[common] = Vector2(origin.x, common_y)
 
 
 func _visible_upgrade_ids_in_tier(tier: int) -> Array[String]:
@@ -678,14 +719,14 @@ func _visible_upgrade_ids_in_tier(tier: int) -> Array[String]:
 func _upgrade_tier_y(tier: int) -> float:
 	match tier:
 		0:
-			return 1245.0
+			return 2400.0
 		1:
-			return 1165.0
+			return 2240.0
 		2:
-			return 1065.0
+			return 2080.0
 		3:
-			return 985.0
-	return 1245.0
+			return 1920.0
+	return 2400.0
 
 
 const ICON_FAMILY := {

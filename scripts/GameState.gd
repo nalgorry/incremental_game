@@ -44,6 +44,8 @@ var deepest_floor: int = 0
 var selected_start_floor: int = 1
 # How many times the player has entered the dungeon.
 var dungeon_runs: int = 0
+# Preferred battle speed multiplier (1.0 or 2.0).
+var battle_speed: float = 1.0
 
 
 var _instance_counter: int = 0
@@ -664,6 +666,7 @@ func to_dict() -> Dictionary:
 		"deepest_floor": deepest_floor,
 		"selected_start_floor": selected_start_floor,
 		"dungeon_runs": dungeon_runs,
+		"battle_speed": battle_speed,
 		"instance_counter": _instance_counter,
 	}
 
@@ -707,6 +710,7 @@ func load_game() -> void:
 	deepest_floor = int(data.get("deepest_floor", 0))
 	selected_start_floor = int(data.get("selected_start_floor", 1))
 	dungeon_runs = int(data.get("dungeon_runs", 0))
+	battle_speed = 2.0 if float(data.get("battle_speed", 1.0)) >= 2.0 else 1.0
 	_instance_counter = int(data.get("instance_counter", 0))
 	_ensure_starter_ability()
 	_ensure_upgrade_tree_visibility()
@@ -726,6 +730,7 @@ func _new_game_defaults() -> void:
 	deepest_floor = 0
 	selected_start_floor = 1
 	dungeon_runs = 0
+	battle_speed = 1.0
 	_instance_counter = 0
 	_ensure_starter_ability()
 	_ensure_upgrade_tree_visibility()

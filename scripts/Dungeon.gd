@@ -41,6 +41,10 @@ var rampage_bonus: float = 0.0
 var run_gold: int = 0
 var run_emeralds: int = 0
 
+# Battle timer (real seconds) and speed control.
+var _battle_time_sec: float = 0.0
+var _speed_mult: float = 1.0
+
 # DPS tracking (damage dealt by the hero).
 var _combat_elapsed: float = 0.0
 var _basic_damage_total: float = 0.0
@@ -50,6 +54,7 @@ var _ability_damage_by_id: Dictionary = {}  # ability_id -> float
 var _ui: Control
 var _floor_label: Label
 var _wave_label: Label
+var _timer_label: Label
 var _gold_label: Label
 var _emerald_label: Label
 var _hp_label: Label
@@ -57,6 +62,7 @@ var _ability_hud: VBoxContainer
 var _basic_dps_label: Label
 var _ability_dps_box: VBoxContainer
 var _ability_dps_labels: Dictionary = {}  # ability_id -> Label
+var _speed_btn: Button
 var _end_overlay: ColorRect
 var _end_panel: PanelContainer
 var _end_label: Label
@@ -70,6 +76,9 @@ func begin_run(start_floor: int) -> void:
 	hero_shield = 0.0
 	last_stand_used = false
 	basic_attack_count = 0
+	_battle_time_sec = 0.0
+	_speed_mult = 2.0 if GameState.battle_speed >= 2.0 else 1.0
+	Engine.time_scale = _speed_mult
 	_combat_elapsed = 0.0
 	_basic_damage_total = 0.0
 	_ability_damage_by_id = {}
@@ -81,6 +90,11 @@ func begin_run(start_floor: int) -> void:
 	_build_ability_dps_labels()
 	_start_floor()
 	running = true
+	_speed_btn.text = "%dx" % int(_speed_mult)
+
+
+func _exit_tree() -> void:
+	Engine.time_scale = 1.0
 
 
 # --- Environment -----------------------------------------------------------
@@ -236,6 +250,9 @@ func _enemy_position(i: int, total: int, is_boss: bool) -> Vector2:
 func _process(delta: float) -> void:
 	if not running:
 		return
+
+	# Track real elapsed time so 2x speed does not inflate the clock.
+	_battle_time_sec += delta / maxf(Engine.time_scale, 0.001)
 
 	if _transition > 0.0:
 		_transition -= delta
@@ -520,14 +537,17 @@ func _end_run(victory: bool) -> void:
 	if not running:
 		return
 	running = false
+	Engine.time_scale = 1.0
+	if _speed_btn != null:
+		_speed_btn.text = "%dx" % int(_speed_mult)
 	GameState.save_game()
 	var msg := ""
 	if victory:
-		msg = "VICTORY!\nYou cleared all %d floors.\n\nThis run: +%d gold, +%d emeralds" % [
-			Database.MAX_FLOORS, run_gold, run_emeralds]
+		msg = "VICTORY!\nYou cleared all %d floors.\n\nThis run: +%d gold, +%d emeralds\nTime: %s" % [
+			Database.MAX_FLOORS, run_gold, run_emeralds, _format_battle_time(_battle_time_sec)]
 	else:
-		msg = "YOU DIED\nFloor %d\n\nThis run: +%d gold, +%d emeralds" % [
-			floor_num, run_gold, run_emeralds]
+		msg = "YOU DIED\nFloor %d\n\nThis run: +%d gold, +%d emeralds\nTime: %s" % [
+			floor_num, run_gold, run_emeralds, _format_battle_time(_battle_time_sec)]
 	_end_label.text = msg
 	_end_overlay.visible = true
 
@@ -550,14 +570,24 @@ func _build_ui() -> void:
 
 	_floor_label = _make_hud_label(top, 24, Color(1, 1, 1))
 	_wave_label = _make_hud_label(top, 20, Color(0.8, 0.8, 0.9))
+	_timer_label = _make_hud_label(top, 20, Color(0.85, 0.85, 0.55))
+	_timer_label.text = "Time: 0:00"
 
 	var right := HBoxContainer.new()
 	right.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	right.position = Vector2(-360, 14)
-	right.add_theme_constant_override("separation", 20)
+	right.position = Vector2(-450, 14)
+	right.add_theme_constant_override("separation", 16)
 	_ui.add_child(right)
 	_gold_label = _make_hud_label(right, 20, Color(1, 0.85, 0.2))
 	_emerald_label = _make_hud_label(right, 20, Color(0.4, 0.9, 0.4))
+
+	_speed_btn = Button.new()
+	_speed_btn.text = "1x"
+	_speed_btn.tooltip_text = "Toggle battle speed (1x / 2x)."
+	_speed_btn.add_theme_font_size_override("font_size", 16)
+	_speed_btn.custom_minimum_size = Vector2(54, 34)
+	_speed_btn.pressed.connect(_toggle_battle_speed)
+	right.add_child(_speed_btn)
 
 	var retreat_btn := Button.new()
 	retreat_btn.text = "Retreat"
@@ -642,6 +672,7 @@ func _update_hud() -> void:
 	_floor_label.text = "Floor %d / %d" % [floor_num, Database.MAX_FLOORS]
 	var total_waves := waves.size()
 	_wave_label.text = "Wave %d / %d" % [mini(wave_index + 1, total_waves), total_waves]
+	_timer_label.text = "Time: %s" % _format_battle_time(_battle_time_sec)
 	_gold_label.text = "Gold: +%d" % run_gold
 	_emerald_label.text = "Emeralds: +%d" % run_emeralds
 	if hero != null:
@@ -651,6 +682,24 @@ func _update_hud() -> void:
 		_hp_label.text = "HP: %d / %d%s" % [int(ceil(hero.hp)), int(round(hero.max_hp)), shield_text]
 	_update_dps_hud()
 	_update_ability_hud()
+
+
+func _format_battle_time(seconds: float) -> String:
+	var total := maxi(0, int(floor(seconds)))
+	var mins := total / 60
+	var secs := total % 60
+	return "%d:%02d" % [mins, secs]
+
+
+func _toggle_battle_speed() -> void:
+	if _speed_mult >= 2.0:
+		_speed_mult = 1.0
+	else:
+		_speed_mult = 2.0
+	Engine.time_scale = _speed_mult
+	GameState.battle_speed = _speed_mult
+	GameState.save_game()
+	_speed_btn.text = "%dx" % int(_speed_mult)
 
 
 func _update_dps_hud() -> void:
@@ -996,5 +1045,6 @@ func _spawn_text(world_pos: Vector2, text: String, color: Color, big: bool) -> v
 
 func _on_flee_pressed() -> void:
 	running = false
+	Engine.time_scale = 1.0
 	GameState.save_game()
 	return_to_town.emit()
