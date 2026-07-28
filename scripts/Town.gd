@@ -23,6 +23,9 @@ var _stats_content: VBoxContainer
 var _upgrade_graph: Control
 var _reset_confirm_overlay: ColorRect
 var _new_game_confirm_overlay: ColorRect
+var _known_upgrade_nodes: Dictionary = {}  # node_id -> true, for reveal fade
+var _last_graph_height: float = 0.0
+var _preserve_tree_scroll: bool = false
 
 
 func _ready() -> void:
@@ -218,6 +221,12 @@ func _refresh() -> void:
 
 
 func _rebuild_stats() -> void:
+	var old_scroll := 0
+	var old_height := _last_graph_height
+	var keep_scroll := _preserve_tree_scroll and _stats_scroll != null
+	if keep_scroll:
+		old_scroll = _stats_scroll.scroll_vertical
+
 	_hide_node_hover_popup()
 	for c in _stats_list.get_children():
 		c.queue_free()
@@ -265,13 +274,30 @@ func _rebuild_stats() -> void:
 	_build_upgrade_hover_preview()
 	_build_upgrade_node_details()
 
+	_last_graph_height = _upgrade_graph.custom_minimum_size.y
+	if keep_scroll:
+		var grew := maxf(0.0, _last_graph_height - old_height)
+		_restore_tree_scroll.call_deferred(old_scroll + int(grew))
+	_preserve_tree_scroll = true
+
 
 func _scroll_upgrade_tree_to_bottom() -> void:
 	if _stats_scroll == null:
 		return
+	_preserve_tree_scroll = false
 	await get_tree().process_frame
 	var scrollbar := _stats_scroll.get_v_scroll_bar()
 	_stats_scroll.scroll_vertical = int(scrollbar.max_value)
+	_last_graph_height = _upgrade_graph.custom_minimum_size.y if _upgrade_graph != null else 0.0
+	_preserve_tree_scroll = true
+
+
+func _restore_tree_scroll(scroll_y: int) -> void:
+	if _stats_scroll == null:
+		return
+	await get_tree().process_frame
+	var scrollbar := _stats_scroll.get_v_scroll_bar()
+	_stats_scroll.scroll_vertical = clampi(scroll_y, 0, int(scrollbar.max_value))
 
 
 func _build_upgrade_tree_graph(graph: Control) -> void:
@@ -279,6 +305,9 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 	var ids: Array = GameState.visible_upgrade_nodes.duplicate()
 	ids.sort_custom(func(a, b): return GameState.skill_data(a).get("order", 0) < GameState.skill_data(b).get("order", 0))
 	_build_node_hover_popup(graph)
+
+	var first_build := _known_upgrade_nodes.is_empty()
+	var fade_nodes: Array[CanvasItem] = []
 
 	# Draw parent links first so circular node buttons sit above them.
 	for id in ids:
@@ -290,6 +319,9 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		line.width = 4.0
 		line.default_color = _node_link_color(parent, id)
 		graph.add_child(line)
+		if not first_build and not _known_upgrade_nodes.has(id):
+			line.modulate.a = 0.0
+			fade_nodes.append(line)
 		var extra_parent := GameState.get_upgrade_extra_reveal_parent(id)
 		if extra_parent != "" and positions.has(extra_parent):
 			var extra_line := Line2D.new()
@@ -297,6 +329,9 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 			extra_line.width = 4.0
 			extra_line.default_color = _node_link_color(extra_parent, id)
 			graph.add_child(extra_line)
+			if not first_build and not _known_upgrade_nodes.has(id):
+				extra_line.modulate.a = 0.0
+				fade_nodes.append(extra_line)
 
 	for id in ids:
 		var d: Dictionary = GameState.skill_data(id)
@@ -305,6 +340,7 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		var complete: bool = GameState.is_upgrade_node_complete(id)
 		var selected: bool = String(id) == _selected_upgrade_node
 		var path_locked := GameState.is_upgrade_node_path_locked(id)
+		var is_new := not first_build and not _known_upgrade_nodes.has(id)
 		var btn := Button.new()
 		btn.text = ""
 		btn.position = positions[id] - Vector2(30, 30)
@@ -327,6 +363,27 @@ func _build_upgrade_tree_graph(graph: Control) -> void:
 		rank_label.position = positions[id] + Vector2(-32, 34)
 		rank_label.size = Vector2(64, 16)
 		graph.add_child(rank_label)
+
+		if is_new:
+			btn.modulate.a = 0.0
+			rank_label.modulate.a = 0.0
+			fade_nodes.append(btn)
+			fade_nodes.append(rank_label)
+
+	_known_upgrade_nodes.clear()
+	for id in ids:
+		_known_upgrade_nodes[String(id)] = true
+
+	if not fade_nodes.is_empty():
+		_fade_in_nodes(fade_nodes)
+
+
+func _fade_in_nodes(nodes: Array[CanvasItem]) -> void:
+	for node in nodes:
+		if not is_instance_valid(node):
+			continue
+		var tween := create_tween()
+		tween.tween_property(node, "modulate:a", 1.0, 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _build_upgrade_hover_preview() -> void:
@@ -579,8 +636,12 @@ func _node_price_text(id: String) -> String:
 
 func _on_reset_upgrade_tree_pressed() -> void:
 	_selected_upgrade_node = "foundation"
+	_known_upgrade_nodes.clear()
+	_last_graph_height = 0.0
+	_preserve_tree_scroll = false
 	GameState.reset_upgrade_tree()
 	_refresh()
+	_scroll_upgrade_tree_to_bottom.call_deferred()
 
 
 func _on_add_test_gold_pressed() -> void:
@@ -1263,9 +1324,12 @@ func _confirm_reset_skills() -> void:
 	_hide_reset_confirm()
 	var refund := _calculate_refund()
 	GameState.gold += refund
+	_known_upgrade_nodes.clear()
+	_last_graph_height = 0.0
+	_preserve_tree_scroll = false
 	GameState.reset_upgrade_tree()
-	_rebuild_upgrade_graph()
 	_refresh()
+	_scroll_upgrade_tree_to_bottom.call_deferred()
 
 
 func _calculate_refund() -> int:
@@ -1358,6 +1422,9 @@ func _confirm_new_game() -> void:
 	_hide_new_game_confirm()
 	_hide_player_stats_panel()
 	_selected_upgrade_node = "foundation"
+	_known_upgrade_nodes.clear()
+	_last_graph_height = 0.0
+	_preserve_tree_scroll = false
 	GameState.reset_progress()
 	_refresh()
 	_scroll_upgrade_tree_to_bottom.call_deferred()
