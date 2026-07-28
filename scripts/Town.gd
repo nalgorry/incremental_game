@@ -267,7 +267,7 @@ func _rebuild_stats() -> void:
 	test_row.add_child(emerald_test_btn)
 
 	_upgrade_graph = Control.new()
-	_upgrade_graph.custom_minimum_size = Vector2(720, 1800)
+	_upgrade_graph.custom_minimum_size = Vector2(720, 200)
 	_upgrade_graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_stats_list.add_child(_upgrade_graph)
 	_build_upgrade_tree_graph(_upgrade_graph)
@@ -683,7 +683,7 @@ func _upgrade_node_positions() -> Dictionary:
 
 func _normalize_upgrade_positions(positions: Dictionary, graph: Control) -> Dictionary:
 	if positions.is_empty():
-		graph.custom_minimum_size = Vector2(720, 1800)
+		graph.custom_minimum_size = Vector2(720, 200)
 		return positions
 	var min_x := INF
 	var max_x := -INF
@@ -695,23 +695,27 @@ func _normalize_upgrade_positions(positions: Dictionary, graph: Control) -> Dict
 		max_x = maxf(max_x, pos.x)
 		min_y = minf(min_y, pos.y)
 		max_y = maxf(max_y, pos.y)
-	var pad_x := 50.0
-	var pad_y := 80.0
-	var content_w := maxf(1.0, max_x - min_x)
-	var content_h := maxf(1.0, max_y - min_y)
+	var pad_y := 70.0
+	var side_pad := 50.0
+	var content_w := maxf(0.0, max_x - min_x)
+	var content_h := maxf(0.0, max_y - min_y)
 	var avail_w := 720.0
 	var scale_x := 1.0
-	if content_w + pad_x * 2.0 > avail_w:
-		scale_x = (avail_w - pad_x * 2.0) / content_w
+	var max_span := avail_w - side_pad * 2.0
+	if content_w > max_span:
+		scale_x = max_span / content_w
+	var used_w := content_w * scale_x
+	var origin_x := (avail_w - used_w) * 0.5
 	var normalized := {}
 	for id in positions.keys():
 		var p: Vector2 = positions[id]
 		normalized[id] = Vector2(
-			pad_x + (p.x - min_x) * scale_x,
+			origin_x + (p.x - min_x) * scale_x,
 			pad_y + (p.y - min_y)
 		)
-	var height := maxf(1800.0, content_h + pad_y * 2.0 + 50.0)
-	graph.custom_minimum_size = Vector2(avail_w, height)
+	# Grow with the tree; stay compact at the start so no huge empty scroll.
+	var height := content_h + pad_y * 2.0 + 50.0
+	graph.custom_minimum_size = Vector2(avail_w, maxf(200.0, height))
 	return normalized
 
 
